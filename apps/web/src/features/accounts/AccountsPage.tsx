@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
+import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { Select } from '@/components/ui/Select';
 import { SegmentedTabs, type SegmentedTabItem } from '@/components/ui/SegmentedTabs';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
@@ -292,7 +293,6 @@ import {
   AccountConfigurationTab,
   AccountDiagnosticsTab,
   AccountLatestRequest,
-  AccountMetricsGrid,
   AccountModelsTab,
   AccountOverviewTab,
   AccountProviderTabs,
@@ -4394,7 +4394,7 @@ export function AccountsPage() {
         'accounts.recommend_reason_recovered'
       );
     });
-    return sortAccountRows(operationalRows, accountSort, requestEvidenceBySelectionKey);
+    return sortAccountRows(operationalRows, accountSort);
   }, [
     accountSort,
     actionCandidatesByRowKey,
@@ -7719,7 +7719,7 @@ export function AccountsPage() {
     setOperationalFilter('all');
     setPlanFilter('all');
     setQuotaBandFilter('all');
-    setAccountSort({ key: 'default', direction: 'desc' });
+    setAccountSort({ key: 'default', direction: 'asc' });
     setPage(1);
     setIsAccountSortDropdownOpen(false);
   };
@@ -7733,7 +7733,7 @@ export function AccountsPage() {
   const commitAccountSortField = (value: AccountSortFieldValue) => {
     setAccountSort((prev) => {
       if (value === 'default') {
-        return { key: 'default', direction: 'desc' };
+        return { key: 'default', direction: 'asc' };
       }
       return {
         key: value,
@@ -7814,6 +7814,11 @@ export function AccountsPage() {
         event.preventDefault();
         closeAccountSortDropdown();
         return;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        commitAccountSortField(ACCOUNT_SORT_FIELD_OPTIONS[optionIndex].value);
+        return;
       default:
         return;
     }
@@ -7888,7 +7893,11 @@ export function AccountsPage() {
           </span>
         </button>
         {isAccountSortDropdownOpen ? (
-          <div className={styles.accountSortDropdownList} role="listbox">
+          <div
+            className={styles.accountSortDropdownList}
+            role="listbox"
+            aria-label={t('accounts.sort_label')}
+          >
             {ACCOUNT_SORT_FIELD_OPTIONS.map((option, optionIndex) => {
               const isSelected = option.value === selectedField;
               const isHighlighted = optionIndex === highlightedAccountSortIndex;
@@ -7896,6 +7905,7 @@ export function AccountsPage() {
                 styles.accountSortDropdownItem,
                 isSelected ? styles.accountSortDropdownItemSelected : '',
                 isHighlighted ? styles.accountSortDropdownItemHighlighted : '',
+                optionIndex === 5 ? styles.accountSortDropdownItemMoreStart : '',
               ]
                 .filter(Boolean)
                 .join(' ');
@@ -7908,6 +7918,7 @@ export function AccountsPage() {
                   type="button"
                   role="option"
                   aria-selected={isSelected}
+                  tabIndex={isHighlighted ? 0 : -1}
                   className={optionClassName}
                   onClick={() => commitAccountSortField(option.value)}
                   onKeyDown={(event) => handleAccountSortOptionKeyDown(event, optionIndex)}
@@ -9017,7 +9028,6 @@ export function AccountsPage() {
                 <article
                   key={row.selectionKey}
                   data-account-card={row.selectionKey}
-                  aria-selected={selectedFiles.has(row.selectionKey)}
                   className={[
                     styles.accountGridCard,
                     row.disabled ? styles.accountGridCardDisabled : '',
@@ -9035,20 +9045,17 @@ export function AccountsPage() {
                 >
                   <div className={styles.accountGridCardHeader}>
                     <div className={styles.accountGridCardIdentity}>
-                      {isSelectionMode ? (
-                        <div
-                          className={styles.accountGridCardCheckbox}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedFiles.has(row.selectionKey)}
-                            disabled={row.runtimeOnly}
-                            onChange={() => toggleSelect(row.selectionKey)}
-                            aria-label={t('accounts.select_account', { name: row.accountLabel })}
-                          />
-                        </div>
-                      ) : null}
+                      <div
+                        className={styles.accountGridCardCheckbox}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <SelectionCheckbox
+                          checked={selectedFiles.has(row.selectionKey)}
+                          disabled={row.runtimeOnly}
+                          onChange={() => toggleSelect(row.selectionKey)}
+                          ariaLabel={t('accounts.select_account', { name: row.accountLabel })}
+                        />
+                      </div>
                       <div className={styles.accountProviderLogo} aria-hidden="true">
                         {ctx.providerIcon ? (
                           <img src={ctx.providerIcon} alt="" />
@@ -9534,7 +9541,6 @@ export function AccountsPage() {
                 <article
                   key={row.selectionKey}
                   data-account-card={row.selectionKey}
-                  aria-selected={selectedFiles.has(row.selectionKey)}
                   className={[
                     styles.accountCard,
                     selectedRowKey === row.selectionKey ? styles.accountCardSelected : '',
@@ -9546,6 +9552,17 @@ export function AccountsPage() {
                   onClick={isSelectionMode ? () => handleAccountCardClick(row) : undefined}
                 >
                   <div className={styles.accountCardIdentity}>
+                    <div
+                      className={styles.accountGridCardCheckbox}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <SelectionCheckbox
+                        checked={selectedFiles.has(row.selectionKey)}
+                        disabled={row.runtimeOnly}
+                        onChange={() => toggleSelect(row.selectionKey)}
+                        ariaLabel={t('accounts.select_account', { name: row.accountLabel })}
+                      />
+                    </div>
                     <div className={styles.accountProviderLogo} aria-hidden="true">
                       {ctx.providerIcon ? (
                         <img src={ctx.providerIcon} alt="" />
@@ -10155,7 +10172,6 @@ export function AccountsPage() {
 
   const renderAccountsOverview = () => (
     <>
-      {hasLoaded ? <AccountMetricsGrid metrics={metrics} /> : null}
       {error ? <div className={styles.errorBox}>{error}</div> : null}
       {initialLoading ? (
         <div className={styles.loadingPanel}>

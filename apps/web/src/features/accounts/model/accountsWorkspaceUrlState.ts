@@ -1,5 +1,10 @@
 import type { DetailTab, AccountsView } from './accountsPagePresentation';
-import type { AccountsWorkspaceUiState } from './accountsWorkspaceUiState';
+import { ACCOUNT_SORT_DEFAULT_DIRECTIONS } from './accountsPagePresentation';
+import {
+  DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE,
+  normalizeLegacyAuthFilesSortMode,
+  type AccountsWorkspaceUiState,
+} from './accountsWorkspaceUiState';
 import { ACCOUNT_STATUS_FILTERS } from './accountRows';
 import type { CredentialHealthInspectionMode } from '@/features/monitoring/model/credentialInspectionSnapshot';
 
@@ -82,6 +87,36 @@ const readNonEmpty = (params: URLSearchParams, key: string, fallback: string): s
   return value === null ? fallback : value.trim() || fallback;
 };
 
+const readAccountSort = (
+  params: URLSearchParams,
+  fallback: AccountsWorkspaceUiState['accountSort']
+): AccountsWorkspaceUiState['accountSort'] => {
+  const requestedSort = params.get('sort');
+  const legacySort = normalizeLegacyAuthFilesSortMode(requestedSort);
+  const currentSortKey = Boolean(
+    requestedSort &&
+      SORT_KEY_SET.has(requestedSort as AccountsWorkspaceUiState['accountSort']['key'])
+  );
+  const key = legacySort?.key ?? readEnum(params, 'sort', SORT_KEY_SET, fallback.key);
+  const defaultDirection = legacySort
+    ? legacySort.direction
+    : currentSortKey
+      ? key === 'default'
+        ? DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE.accountSort.direction
+        : ACCOUNT_SORT_DEFAULT_DIRECTIONS[key]
+      : fallback.direction;
+
+  return {
+    key,
+    direction: readEnum(
+      params,
+      'direction',
+      new Set<AccountsWorkspaceUiState['accountSort']['direction']>(['asc', 'desc']),
+      defaultDirection
+    ),
+  };
+};
+
 export const readAccountsWorkspaceUrlState = (
   search: string,
   fallback: AccountsWorkspaceUiState
@@ -109,15 +144,7 @@ export const readAccountsWorkspaceUrlState = (
       OPERATIONAL_FILTER_SET,
       fallback.operationalFilter
     ),
-    accountSort: {
-      key: readEnum(params, 'sort', SORT_KEY_SET, fallback.accountSort.key),
-      direction: readEnum(
-        params,
-        'direction',
-        new Set<AccountsWorkspaceUiState['accountSort']['direction']>(['asc', 'desc']),
-        fallback.accountSort.direction
-      ),
-    },
+    accountSort: readAccountSort(params, fallback.accountSort),
     pageSize: PAGE_SIZE_SET.has(pageSizeValue) ? pageSizeValue : fallback.pageSize,
     accountDisplayMode:
       params.get('display') === 'masked'

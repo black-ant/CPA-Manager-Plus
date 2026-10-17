@@ -95,7 +95,7 @@ describe('accountsWorkspaceUrlState', () => {
     expect(state.healthMode).toBe('local');
     expect(state.statusFilter).toBe('all');
     expect(state.quotaBandFilter).toBe('all');
-    expect(state.accountSort).toEqual({ key: 'recent', direction: 'desc' });
+    expect(state.accountSort).toEqual(DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE.accountSort);
     expect(state.pageSize).toBe(10);
     expect(state.detailTab).toBe('overview');
     expect(state.editor).toBeNull();
@@ -156,6 +156,17 @@ describe('accountsWorkspaceUrlState', () => {
 
     expect(search).toBe('?sort=remaining&direction=asc');
     expect(state.accountSort).toEqual({ key: 'remaining', direction: 'asc' });
+  });
+
+  it('reads v1.11.6 sort-mode URLs and keeps their encoded direction', () => {
+    expect(
+      readAccountsWorkspaceUrlState('?sort=note-desc', DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE)
+        .accountSort
+    ).toEqual({ key: 'note', direction: 'desc' });
+    expect(
+      readAccountsWorkspaceUrlState('?sort=priority-asc', DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE)
+        .accountSort
+    ).toEqual({ key: 'priority', direction: 'asc' });
   });
 
   it('round-trips precise Codex status filters', () => {

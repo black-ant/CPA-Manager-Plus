@@ -58,4 +58,42 @@ describe('accountsWorkspaceUiState', () => {
       })
     ).toEqual(DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE);
   });
+
+  it('migrates v1.11.6 sorting and card layout preferences', () => {
+    const storage = createMemoryStorage();
+    storage.setItem(
+      'authFilesPage.uiState',
+      JSON.stringify({ sortMode: 'priority-asc', viewMode: 'diagram' })
+    );
+    (globalThis as { window?: unknown }).window = { localStorage: storage };
+
+    expect(readAccountsWorkspaceUiState()).toMatchObject({
+      accountSort: { key: 'priority', direction: 'asc' },
+      layoutMode: 'grid',
+    });
+  });
+
+  it('uses current workspace preferences before legacy auth-file preferences', () => {
+    const storage = createMemoryStorage();
+    storage.setItem(
+      'cpa_manager_accounts_workspace_ui_v1',
+      JSON.stringify({ accountSort: { key: 'name', direction: 'desc' }, layoutMode: 'table' })
+    );
+    storage.setItem(
+      'authFilesPage.uiState',
+      JSON.stringify({ sortMode: 'priority-asc', viewMode: 'diagram' })
+    );
+    (globalThis as { window?: unknown }).window = { localStorage: storage };
+
+    expect(readAccountsWorkspaceUiState()).toMatchObject({
+      accountSort: { key: 'name', direction: 'desc' },
+      layoutMode: 'table',
+    });
+  });
+
+  it('uses each sort field default when a saved direction is missing', () => {
+    expect(
+      normalizeAccountsWorkspaceUiState({ accountSort: { key: 'recent' } }).accountSort
+    ).toEqual({ key: 'recent', direction: 'desc' });
+  });
 });

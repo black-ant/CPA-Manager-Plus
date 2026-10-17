@@ -84,12 +84,12 @@ export const ACCOUNT_SORT_FIELD_OPTIONS: Array<{
 }> = [
   DEFAULT_ACCOUNT_SORT_FIELD_OPTION,
   { value: 'name', labelKey: 'accounts.sort_name' },
-  { value: 'plan', labelKey: 'accounts.col_plan' },
-  { value: 'remaining', labelKey: 'accounts.sort_remaining' },
   { value: 'note', labelKey: 'auth_files.note_label' },
-  { value: 'reset', labelKey: 'accounts.col_reset' },
-  { value: 'quota', labelKey: 'accounts.col_quota' },
   { value: 'priority', labelKey: 'accounts.col_priority' },
+  { value: 'plan', labelKey: 'accounts.col_plan' },
+  { value: 'reset', labelKey: 'accounts.col_reset' },
+  { value: 'remaining', labelKey: 'accounts.sort_remaining' },
+  { value: 'quota', labelKey: 'accounts.col_quota' },
   { value: 'recent', labelKey: 'accounts.col_recent' },
   { value: 'created', labelKey: 'accounts.col_created' },
 ];

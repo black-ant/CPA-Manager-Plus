@@ -2779,6 +2779,52 @@ describe('accountRows', () => {
     ).toEqual(['low.json', 'high.json', 'middle.json']);
   });
 
+  it('uses provider and natural file-name ordering by default, independent of health status', () => {
+    const rows = buildAccountRows(
+      [
+        { name: 'codex-10.json', type: 'codex', disabled: true },
+        { name: 'codex-2.json', type: 'codex', disabled: false },
+        { name: 'claude.json', type: 'claude', disabled: true },
+      ],
+      emptyStores()
+    );
+
+    expect(sortAccountRows(rows).map((row) => row.fileName)).toEqual([
+      'claude.json',
+      'codex-2.json',
+      'codex-10.json',
+    ]);
+  });
+
+  it('sorts legacy note and priority fields with empty values last and file-name tie breaks', () => {
+    const rows = buildAccountRows(
+      [
+        { name: 'priority-10.json', type: 'codex', priority: 10, note: 'same' },
+        { name: 'priority-2.json', type: 'codex', priority: 10, note: 'same' },
+        { name: 'priority-empty.json', type: 'codex', note: '' },
+        { name: 'priority-note.json', type: 'codex', priority: 1, note: 'alpha' },
+      ],
+      emptyStores()
+    );
+
+    expect(
+      sortAccountRows(rows, { key: 'priority', direction: 'desc' }).map((row) => row.fileName)
+    ).toEqual([
+      'priority-2.json',
+      'priority-10.json',
+      'priority-note.json',
+      'priority-empty.json',
+    ]);
+    expect(
+      sortAccountRows(rows, { key: 'note', direction: 'desc' }).map((row) => row.fileName)
+    ).toEqual([
+      'priority-2.json',
+      'priority-10.json',
+      'priority-note.json',
+      'priority-empty.json',
+    ]);
+  });
+
   it('keeps card remainingDays homologous with sort=remaining when display quota is idle', () => {
     const nowMs = 1_800_000_000_000;
     const soonerUntilMs = nowMs + 3 * 86_400_000;
@@ -3052,7 +3098,7 @@ describe('accountRows', () => {
     ).toEqual(['active.json', 'expired.json', 'unknown.json']);
   });
 
-  it('sorts the name column by account label instead of credential file name', () => {
+  it('sorts the name column by credential file name instead of account label', () => {
     const rows = buildAccountRows(
       [
         { name: 'a-file.json', type: 'codex', account: 'Zulu Account' },
@@ -3063,7 +3109,7 @@ describe('accountRows', () => {
 
     expect(
       sortAccountRows(rows, { key: 'name', direction: 'asc' }).map((row) => row.fileName)
-    ).toEqual(['z-file.json', 'a-file.json']);
+    ).toEqual(['a-file.json', 'z-file.json']);
   });
 
   it('uses a credential replacement boundary to suppress stale raw status messages', () => {

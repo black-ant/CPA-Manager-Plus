@@ -4,6 +4,7 @@ import {
   type AccountRowSort,
   type AccountStatusFilter,
 } from './accountRows';
+import { ACCOUNT_SORT_DEFAULT_DIRECTIONS } from './accountsPagePresentation';
 import type { QuotaAccountDisplayMode } from '@/components/quota/quotaDisplay';
 
 export type AccountOperationalFilter = 'all' | 'reauth' | 'cooldown' | 'automation' | 'recovered';
@@ -23,6 +24,7 @@ export interface AccountsWorkspaceUiState {
 }
 
 const STORAGE_KEY = 'cpa_manager_accounts_workspace_ui_v1';
+const LEGACY_AUTH_FILES_STORAGE_KEY = 'authFilesPage.uiState';
 const PAGE_SIZES = new Set([10, 20, 50]);
 const SORT_KEYS = new Set([
   'default',
@@ -48,7 +50,7 @@ export const DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE: AccountsWorkspaceUiState = {
   planFilter: 'all',
   quotaBandFilter: 'all',
   operationalFilter: 'all',
-  accountSort: { key: 'recent', direction: 'desc' },
+  accountSort: { key: 'default', direction: 'asc' },
   pageSize: 10,
   accountDisplayMode: 'full',
   layoutMode: 'table',
@@ -56,6 +58,25 @@ export const DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE: AccountsWorkspaceUiState = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const getDefaultSortDirection = (key: AccountRowSort['key']) =>
+  key === 'default' ? DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE.accountSort.direction : ACCOUNT_SORT_DEFAULT_DIRECTIONS[key];
+
+export const normalizeLegacyAuthFilesSortMode = (value: unknown): AccountRowSort | null => {
+  if (typeof value !== 'string') return null;
+  if (value === 'default') return { key: 'default', direction: 'asc' };
+  if (value === 'az' || value === 'name-asc') return { key: 'name', direction: 'asc' };
+  if (value === 'note-asc' || value === 'note-desc') {
+    return { key: 'note', direction: value.endsWith('desc') ? 'desc' : 'asc' };
+  }
+  if (value === 'priority' || value === 'priority-asc' || value === 'priority-desc') {
+    return { key: 'priority', direction: value.endsWith('asc') ? 'asc' : 'desc' };
+  }
+  if (value === 'plan-asc' || value === 'plan-desc') {
+    return { key: 'plan', direction: value.endsWith('desc') ? 'desc' : 'asc' };
+  }
+  return null;
+};
 
 export const normalizeAccountsWorkspaceUiState = (value: unknown): AccountsWorkspaceUiState => {
   if (!isRecord(value)) return DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE;
@@ -65,7 +86,7 @@ export const normalizeAccountsWorkspaceUiState = (value: unknown): AccountsWorks
     : DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE.accountSort.key;
   const sortDirection = SORT_DIRECTIONS.has(String(sort.direction))
     ? (String(sort.direction) as AccountRowSort['direction'])
-    : DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE.accountSort.direction;
+    : getDefaultSortDirection(sortKey);
   const pageSize = Number(value.pageSize);
 
   return {
@@ -88,19 +109,39 @@ export const normalizeAccountsWorkspaceUiState = (value: unknown): AccountsWorks
     accountSort: { key: sortKey, direction: sortDirection },
     pageSize: PAGE_SIZES.has(pageSize) ? pageSize : 10,
     accountDisplayMode: value.accountDisplayMode === 'masked' ? 'masked' : 'full',
-    layoutMode: value.layoutMode === 'grid' ? 'grid' : 'table',
+    layoutMode:
+      value.layoutMode === 'grid'
+        ? 'grid'
+        : value.layoutMode === 'table'
+          ? 'table'
+          : DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE.layoutMode,
   };
 };
 
 export const readAccountsWorkspaceUiState = (): AccountsWorkspaceUiState => {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE;
-  }
+  if (typeof window === 'undefined') return DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw
-      ? normalizeAccountsWorkspaceUiState(JSON.parse(raw) as unknown)
-      : DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE;
+    const raw = window.localStorage?.getItem(STORAGE_KEY);
+    if (raw) return normalizeAccountsWorkspaceUiState(JSON.parse(raw) as unknown);
+
+    const legacyRaw =
+      window.localStorage?.getItem(LEGACY_AUTH_FILES_STORAGE_KEY) ??
+      window.sessionStorage?.getItem(LEGACY_AUTH_FILES_STORAGE_KEY);
+    if (!legacyRaw) return DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE;
+
+    const legacyState = JSON.parse(legacyRaw) as unknown;
+    if (!isRecord(legacyState)) return DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE;
+    const legacySort = normalizeLegacyAuthFilesSortMode(legacyState.sortMode);
+    return normalizeAccountsWorkspaceUiState({
+      ...DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE,
+      ...(legacySort ? { accountSort: legacySort } : {}),
+      layoutMode:
+        legacyState.viewMode === 'list'
+          ? 'table'
+          : legacyState.viewMode === 'diagram'
+            ? 'grid'
+            : DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE.layoutMode,
+    });
   } catch {
     return DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE;
   }

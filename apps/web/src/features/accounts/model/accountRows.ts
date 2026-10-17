@@ -33,7 +33,6 @@ import {
 import {
   getAccountRequestCredentialEvidence,
   hasAccountQuotaLimitEvidence,
-  isAccountCredentialStatusProblemCurrent,
   isAccountInspectionHealthyEvidence,
   isAccountInspectionActionable,
   isAccountObservedDiagnosticProblemCurrent,
@@ -788,19 +787,14 @@ export const filterAccountRows = (rows: AccountRow[], filters: AccountRowFilters
 
 export const sortAccountRows = (
   rows: AccountRow[],
-  sort?: AccountRowSort,
-  requestEvidenceBySelectionKey?: AccountRequestEvidenceBySelectionKey
+  sort?: AccountRowSort
 ): AccountRow[] => {
-  const defaultSorted = [...rows].sort((left, right) =>
-    compareDefaultAccountRows(left, right, requestEvidenceBySelectionKey)
-  );
+  const defaultSorted = [...rows].sort(compareDefaultAccountRows);
   if (!sort || sort.key === 'default') return defaultSorted;
 
   return defaultSorted.sort((left, right) => {
     const byColumn = compareAccountRowsBySort(left, right, sort);
-    return byColumn === 0
-      ? compareDefaultAccountRows(left, right, requestEvidenceBySelectionKey)
-      : byColumn;
+    return byColumn === 0 ? compareDefaultAccountRows(left, right) : byColumn;
   });
 };
 
@@ -953,43 +947,18 @@ const matchesQuotaBand = (row: AccountRow, band: AccountQuotaBand) => {
   return true;
 };
 
-const getRiskRank = (
-  row: AccountRow,
-  requestEvidenceBySelectionKey?: AccountRequestEvidenceBySelectionKey
-) => {
-  const requestEvidenceInput = getRowRequestEvidenceInput(row, requestEvidenceBySelectionKey);
-  const requestEvidence = resolveAccountRequestHealthEvidence(requestEvidenceInput);
-  const currentRequestEvidence = isAccountRequestHealthEvidenceCurrent(row, requestEvidence)
-    ? requestEvidence
-    : null;
-  const authenticationProblem = resolveAccountAuthenticationProblemEvidence(row, requestEvidence);
-  if (authenticationProblem) return 7;
-  if (isAccountInspectionActionable(row, requestEvidence)) return 7;
-  if (row.quota.status === 'exhausted') return 6;
-  if (row.quota.status === 'low') return 5;
-  if (hasAccountQuotaLimitEvidence(row, requestEvidenceInput)) return 5;
-  if (currentRequestEvidence?.kind === 'transient_failure') return 4;
-  if (isAccountQuotaRefreshProblemCurrent(row, requestEvidence)) return 4;
-  if (isAccountObservedDiagnosticProblemCurrent(row, requestEvidence)) return 4;
-  if (hasPartialGroupedQuota(row)) return 3;
-  if (row.disabled) return 2;
-  if (isAccountCredentialStatusProblemCurrent(row, requestEvidence)) return 1;
-  return 0;
-};
-
-const compareDefaultAccountRows = (
-  left: AccountRow,
-  right: AccountRow,
-  requestEvidenceBySelectionKey?: AccountRequestEvidenceBySelectionKey
-) => {
-  const leftRisk = getRiskRank(left, requestEvidenceBySelectionKey);
-  const rightRisk = getRiskRank(right, requestEvidenceBySelectionKey);
-  if (leftRisk !== rightRisk) return rightRisk - leftRisk;
-  if (left.provider !== right.provider) return left.provider.localeCompare(right.provider);
-  return left.fileName.localeCompare(right.fileName, undefined, {
+const compareAccountFileNames = (left: AccountRow, right: AccountRow) =>
+  left.fileName.localeCompare(right.fileName, undefined, {
     numeric: true,
     sensitivity: 'base',
   });
+
+const compareDefaultAccountRows = (left: AccountRow, right: AccountRow) => {
+  const byProvider = left.provider.localeCompare(right.provider, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+  return byProvider || compareAccountFileNames(left, right);
 };
 
 const getAccountPlanSortRank = (provider: string, planType: string | null): number | null => {
@@ -1011,23 +980,14 @@ const compareAccountPlanTypes = (
   right: string | null,
   direction: AccountRowSortDirection
 ) => {
-  const leftCanonical = getCanonicalPlanType(leftProvider, left);
-  const rightCanonical = getCanonicalPlanType(rightProvider, right);
   const leftRank = getAccountPlanSortRank(leftProvider, left);
   const rightRank = getAccountPlanSortRank(rightProvider, right);
-  const leftKnown = leftRank !== null;
-  const rightKnown = rightRank !== null;
-  if (!leftKnown && !rightKnown) return 0;
-  if (!leftKnown) return 1;
-  if (!rightKnown) return -1;
-  const rankComparison = compareNumbers(leftRank, rightRank, direction);
-  return rankComparison || compareText(leftCanonical ?? '', rightCanonical ?? '', direction);
+  return compareNullableNumbers(leftRank, rightRank, direction);
 };
 
 const compareAccountRowsBySort = (left: AccountRow, right: AccountRow, sort: AccountRowSort) => {
   if (sort.key === 'name') {
-    const accountComparison = compareText(left.accountLabel, right.accountLabel, sort.direction);
-    return accountComparison || compareText(left.fileName, right.fileName, sort.direction);
+    return compareText(left.fileName, right.fileName, sort.direction);
   }
   if (sort.key === 'plan') {
     return compareAccountPlanTypes(
@@ -1039,10 +999,16 @@ const compareAccountRowsBySort = (left: AccountRow, right: AccountRow, sort: Acc
     );
   }
   if (sort.key === 'note') {
-    return compareText(left.note ?? '', right.note ?? '', sort.direction, true);
+    return (
+      compareText(left.note ?? '', right.note ?? '', sort.direction, true) ||
+      compareAccountFileNames(left, right)
+    );
   }
   if (sort.key === 'priority') {
-    return compareNumbers(left.priority ?? 0, right.priority ?? 0, sort.direction);
+    return (
+      compareNullableNumbers(left.priority, right.priority, sort.direction) ||
+      compareAccountFileNames(left, right)
+    );
   }
   if (sort.key === 'recent') {
     const leftTotal = left.usage.success + left.usage.failure;

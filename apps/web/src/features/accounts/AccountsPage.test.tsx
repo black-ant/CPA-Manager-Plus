@@ -8218,6 +8218,16 @@ describe('AccountsPage replacement flows', () => {
 
     const renderer = await renderAccountsPage();
 
+    await act(async () => {
+      findHostButtonByAriaLabel(
+        renderer,
+        'accounts.sort_label: accounts.sort_default'
+      ).props.onClick();
+    });
+    await act(async () => {
+      findHostButtonByText(renderer, 'accounts.col_recent').props.onClick();
+    });
+
     expect(getAccountListItemTexts(renderer)[0]).toContain('middle.json');
 
     await act(async () => {
@@ -8269,6 +8279,70 @@ describe('AccountsPage replacement flows', () => {
     expect(getAccountListItemTexts(renderer)[0]).toContain('high.json');
   });
 
+  it('opens the custom sort list with v1.11.6 fields ahead of newer sorts', async () => {
+    const renderer = await renderAccountsPage();
+    const trigger = findHostButtonByAriaLabel(
+      renderer,
+      'accounts.sort_label: accounts.sort_default'
+    );
+
+    await act(async () => {
+      trigger.props.onClick();
+    });
+
+    const listbox = renderer.root.findByProps({ role: 'listbox' });
+    expect(trigger.props['aria-expanded']).toBe(true);
+    expect(listbox.findAllByProps({ role: 'option' }).map(readText).slice(0, 5)).toEqual([
+      'accounts.sort_default',
+      'accounts.sort_name',
+      'auth_files.note_label',
+      'accounts.col_priority',
+      'accounts.col_plan',
+    ]);
+    const sortOptions = listbox.findAllByProps({ role: 'option' });
+    expect(listbox.props['aria-label']).toBe('accounts.sort_label');
+    expect(sortOptions[0].props.tabIndex).toBe(0);
+    expect(sortOptions[1].props.tabIndex).toBe(-1);
+
+    await act(async () => {
+      sortOptions[0].props.onKeyDown({ key: 'ArrowDown', preventDefault: vi.fn() });
+    });
+
+    const highlightedOption = renderer.root
+      .findAllByProps({ role: 'option' })
+      .find((option) => option.props.tabIndex === 0);
+    expect(readText(highlightedOption!)).toBe('accounts.sort_name');
+    expect(highlightedOption!.props.className).toContain('accountSortDropdownItemHighlighted');
+
+    await act(async () => {
+      highlightedOption!.props.onKeyDown({ key: 'Enter', preventDefault: vi.fn() });
+    });
+
+    expect(
+      findHostButtonByAriaLabel(renderer, 'accounts.sort_label: accounts.sort_name').props[
+        'aria-expanded'
+      ]
+    ).toBe(false);
+    expect(renderer.root.findAllByType('select')).toHaveLength(0);
+
+    const updatedTrigger = findHostButtonByAriaLabel(
+      renderer,
+      'accounts.sort_label: accounts.sort_name'
+    );
+    await act(async () => {
+      updatedTrigger.props.onKeyDown({ key: 'ArrowDown', preventDefault: vi.fn() });
+    });
+    const openOption = renderer.root.findAllByProps({ role: 'option' })[1];
+    await act(async () => {
+      openOption.props.onKeyDown({ key: 'Escape', preventDefault: vi.fn() });
+    });
+    expect(
+      findHostButtonByAriaLabel(renderer, 'accounts.sort_label: accounts.sort_name').props[
+        'aria-expanded'
+      ]
+    ).toBe(false);
+  });
+
   it('sorts Codex account cards by paid subscription remaining time', async () => {
     const now = Date.now();
     mocks.files = [
@@ -8301,7 +8375,7 @@ describe('AccountsPage replacement flows', () => {
     await act(async () => {
       findHostButtonByAriaLabel(
         renderer,
-        'accounts.sort_label: accounts.col_recent'
+        'accounts.sort_label: accounts.sort_default'
       ).props.onClick();
     });
     await act(async () => {
@@ -8408,7 +8482,7 @@ describe('AccountsPage replacement flows', () => {
     await act(async () => {
       findHostButtonByAriaLabel(
         renderer,
-        'accounts.sort_label: accounts.col_recent'
+        'accounts.sort_label: accounts.sort_default'
       ).props.onClick();
     });
     await act(async () => {
@@ -9748,7 +9822,7 @@ describe('AccountsPage replacement flows', () => {
           typeof node.props['aria-label'] === 'string' &&
           node.props['aria-label'].startsWith('accounts.select_account:')
       )
-    ).toHaveLength(0);
+    ).toHaveLength(2);
     expect(getAccountListItemTexts(renderer).join('\n')).toContain('high.json');
     expect(findHostButtonByText(renderer, 'accounts.view_mode_table')).toBeDefined();
     expect(findHostButtonByText(renderer, 'accounts.view_mode_grid')).toBeDefined();
@@ -9756,6 +9830,9 @@ describe('AccountsPage replacement flows', () => {
 
   it('renders the seven localized credential list headers', async () => {
     const renderer = await renderAccountsPage();
+    await act(async () => {
+      findHostButtonByText(renderer, 'accounts.view_mode_table').props.onClick();
+    });
     const header = renderer.root.findByProps({ 'data-account-list-header': 'true' });
 
     expect(header.findAllByType('span').map((node) => readText(node))).toEqual([
@@ -10204,12 +10281,33 @@ describe('AccountsPage replacement flows', () => {
     expect(mocks.toggleSelect).toHaveBeenCalledWith('codex.json\u0000auth-1');
   });
 
-  it('does not open account details from normal row clicks', async () => {
+  it('does not open account details from normal table-row clicks', async () => {
     const renderer = await renderAccountsPage();
+    await act(async () => {
+      findHostButtonByText(renderer, 'accounts.view_mode_table').props.onClick();
+    });
     const card = findAccountCardByKey(renderer, 'codex.json\u0000auth-1');
 
     expect(card.props.onClick).toBeUndefined();
     expect(treeText(renderer)).not.toContain('accounts.detail_tab_overview');
+  });
+
+  it('selects accounts from visible card checkboxes without opening details', async () => {
+    const renderer = await renderAccountsPage();
+    const selectionKey = getAuthFileSelectionKey(mocks.files[0]);
+    const checkbox = renderer.root.find(
+      (node) =>
+        node.type === 'input' &&
+        typeof node.props['aria-label'] === 'string' &&
+        node.props['aria-label'].startsWith('accounts.select_account:')
+    );
+
+    await act(async () => {
+      checkbox.props.onChange({ target: { checked: true } });
+    });
+
+    expect(mocks.toggleSelect).toHaveBeenCalledWith(selectionKey);
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 
   it('copies account identity text from the first column with inline feedback', async () => {
@@ -12610,7 +12708,7 @@ describe('AccountsPage replacement flows', () => {
     const renderer = await renderAccountsPage();
 
     expect(treeText(renderer)).toContain('accounts.mobile_filters_button');
-    expect(treeText(renderer)).toContain('accounts.col_recent');
+    expect(treeText(renderer)).toContain('accounts.sort_default');
 
     await act(async () => {
       findButtonByText(renderer, 'accounts.mobile_filters_button').props.onClick();
