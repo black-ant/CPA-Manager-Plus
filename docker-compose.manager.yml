@@ -1,9 +1,9 @@
 services:
   cpa-manager-plus:
-    build:
-      context: .
-      dockerfile: Dockerfile.manager-server
-    image: seakee/cpa-manager-plus:latest
+    # Use the image pushed to Alibaba Cloud ACR by
+    # Ant-Windows-Bat workflow "CPA Manager Plus 部署"
+    # (bin workflow script: cpa_build_push_image_acr.ps1)
+    image: registry.cn-hangzhou.aliyuncs.com/antblack/cpa-manager-plus:latest
     restart: unless-stopped
     ports:
       - "18317:18317"

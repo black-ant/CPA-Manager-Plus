@@ -66,6 +66,7 @@ const MANAGED_QUERY_KEYS = [
   'pageSize',
   'display',
   'layout',
+  'density',
   'account',
   'tab',
   'editor',
@@ -158,6 +159,12 @@ export const readAccountsWorkspaceUrlState = (
         : params.get('layout') === 'table'
           ? 'table'
           : fallback.layoutMode,
+    cardDensity:
+      params.get('density') === 'compact'
+        ? 'compact'
+        : params.get('density') === 'full'
+          ? 'full'
+          : fallback.cardDensity,
     account: params.get('account') || null,
     detailTab:
       params.get('tab') === 'credential'
@@ -202,6 +209,7 @@ export const writeAccountsWorkspaceUrlSearch = (
   if (state.pageSize !== defaults.pageSize) params.set('pageSize', String(state.pageSize));
   setNonDefault(params, 'display', state.accountDisplayMode, defaults.accountDisplayMode);
   setNonDefault(params, 'layout', state.layoutMode, defaults.layoutMode);
+  setNonDefault(params, 'density', state.cardDensity, defaults.cardDensity);
   if (state.account) {
     params.set('account', state.account);
     setNonDefault(params, 'tab', state.detailTab, 'overview');

@@ -5,8 +5,9 @@ COPY package*.json ./
 COPY apps/web/package.json ./apps/web/package.json
 RUN npm ci
 COPY apps/web ./apps/web
+ARG NODE_OPTIONS=
 WORKDIR /app/apps/web
-RUN VERSION=$VERSION npm run build
+RUN VERSION=$VERSION NODE_OPTIONS="$NODE_OPTIONS" npm run build
 
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS service-build
 ARG VERSION=dev
@@ -18,8 +19,9 @@ COPY apps/manager-server ./apps/manager-server
 COPY --from=web-build /app/apps/web/dist/index.html ./apps/manager-server/internal/httpapi/web/management.html
 COPY --from=web-build /app/apps/web/dist/favicon.ico ./apps/manager-server/internal/httpapi/web/favicon.ico
 COPY --from=web-build /app/apps/web/dist/apple-touch-icon.png ./apps/manager-server/internal/httpapi/web/apple-touch-icon.png
+ARG GOPROXY=
 WORKDIR /src/apps/manager-server
-RUN go mod download
+RUN GOPROXY="${GOPROXY:-https://proxy.golang.org,direct}" go mod download
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-X github.com/seakee/cpa-manager-plus/apps/manager-server/internal/buildinfo.Version=$VERSION -X github.com/seakee/cpa-manager-plus/apps/manager-server/internal/buildinfo.SourceCommit=$SOURCE_COMMIT" -o /out/cpa-manager-plus ./cmd/cpa-manager-plus
 
 FROM alpine:3.21

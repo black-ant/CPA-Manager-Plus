@@ -1423,6 +1423,7 @@
     "quota_filter": "额度筛选",
     "view_mode_table": "表格",
     "view_mode_grid": "卡片",
+    "view_mode_compact": "简略",
     "view_mode_switcher": "视图模式",
     "priority_edit": "编辑优先级",
     "quota_reset_credits_unit": "次重置",

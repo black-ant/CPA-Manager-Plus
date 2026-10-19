@@ -282,6 +282,7 @@ import {
   readAccountsWorkspaceUiState,
   writeAccountsWorkspaceUiState,
   type AccountOperationalFilter,
+  type AccountsCardDensity,
   type AccountsLayoutMode,
   type AccountsWorkspaceUiState,
 } from '@/features/accounts/model/accountsWorkspaceUiState';
@@ -423,6 +424,10 @@ const renderAccountDetailTrigger = ({
 const MAX_CONCURRENT_QUOTA_REFRESHES_PER_PROVIDER = 1;
 const MAX_CONCURRENT_QUOTA_REFRESH_PROVIDERS = 3;
 const MAX_CONCURRENT_ACCOUNT_HISTORY_REQUESTS = 2;
+// Enabling or disabling a credential invalidates its evidence and refetches it.
+// Hold the rendered order for a short window so the list never reshuffles under
+// the cursor while that refresh settles.
+const STATUS_ORDER_LOCK_RELEASE_DELAY_MS = 4_000;
 const PASSIVE_ACCOUNTS_EVIDENCE_REFRESH_MS = 60_000;
 const CREDENTIAL_EVIDENCE_UNIQUE_FILE_NAME_BOUNDARY_PREFIX = 'unique-file-name\u0000';
 const CREDENTIAL_EVIDENCE_SOURCE_FILE_BOUNDARY_PREFIX = 'source-file\u0000';
@@ -1668,8 +1673,12 @@ export function AccountsPage() {
   const [layoutMode, setLayoutMode] = useState<AccountsLayoutMode>(
     () => initialWorkspaceUrlState.current.layoutMode
   );
+  const [cardDensity, setCardDensity] = useState<AccountsCardDensity>(
+    () => initialWorkspaceUrlState.current.cardDensity
+  );
   const isCompactScreen = useMediaQuery('(max-width: 1024px)');
   const effectiveLayoutMode = isCompactScreen ? 'grid' : layoutMode;
+  const isCompactCard = effectiveLayoutMode === 'grid' && cardDensity === 'compact';
   const [copiedIdentityKey, setCopiedIdentityKey] = useState<string | null>(null);
   const detailEventsRequestIdRef = useRef(0);
   const detailEventsAutoLoadKeyRef = useRef<string | null>(null);
@@ -4358,6 +4367,35 @@ export function AccountsPage() {
       statusFilter,
     ]
   );
+  const statusOrderLockRef = useRef<{
+    keys: string[];
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null>(null);
+
+  const clearStatusOrderLock = useCallback(() => {
+    const lock = statusOrderLockRef.current;
+    if (!lock) return;
+    if (lock.timer !== null) clearTimeout(lock.timer);
+    statusOrderLockRef.current = null;
+  }, []);
+
+  useEffect(() => clearStatusOrderLock, [clearStatusOrderLock]);
+
+  // Any user-driven change to how the list is organized releases the lock, so
+  // the next sort reflects fresh data instead of the captured snapshot.
+  useEffect(() => {
+    clearStatusOrderLock();
+  }, [
+    accountSort,
+    clearStatusOrderLock,
+    effectiveOperationalFilter,
+    pageSize,
+    planFilter,
+    quotaBandFilter,
+    search,
+    statusFilter,
+  ]);
+
   const filteredRows = useMemo(() => {
     const operationalRows = baseFilteredRows.filter((row) => {
       if (effectiveOperationalFilter === 'all') return true;
@@ -4394,7 +4432,22 @@ export function AccountsPage() {
         'accounts.recommend_reason_recovered'
       );
     });
-    return sortAccountRows(operationalRows, accountSort);
+    const sortedRows = sortAccountRows(operationalRows, accountSort);
+    const orderLock = statusOrderLockRef.current;
+    if (!orderLock || orderLock.keys.length === 0) return sortedRows;
+    const lockedPositionByKey = new Map(orderLock.keys.map((key, index) => [key, index]));
+    const lockedRows: AccountRow[] = [];
+    const unlockedRows: AccountRow[] = [];
+    sortedRows.forEach((row) => {
+      if (lockedPositionByKey.has(row.selectionKey)) lockedRows.push(row);
+      else unlockedRows.push(row);
+    });
+    lockedRows.sort(
+      (left, right) =>
+        (lockedPositionByKey.get(left.selectionKey) ?? 0) -
+        (lockedPositionByKey.get(right.selectionKey) ?? 0)
+    );
+    return [...lockedRows, ...unlockedRows];
   }, [
     accountSort,
     actionCandidatesByRowKey,
@@ -4405,6 +4458,23 @@ export function AccountsPage() {
     recommendationBySelectionKey,
     requestEvidenceBySelectionKey,
   ]);
+
+  const lockStatusOrder = useCallback(() => {
+    clearStatusOrderLock();
+    statusOrderLockRef.current = {
+      keys: filteredRows.map((row) => row.selectionKey),
+      timer: null,
+    };
+  }, [clearStatusOrderLock, filteredRows]);
+
+  const releaseStatusOrderLockAfterSettle = useCallback(() => {
+    const lock = statusOrderLockRef.current;
+    if (!lock) return;
+    if (lock.timer !== null) clearTimeout(lock.timer);
+    lock.timer = setTimeout(() => {
+      if (statusOrderLockRef.current === lock) statusOrderLockRef.current = null;
+    }, STATUS_ORDER_LOCK_RELEASE_DELAY_MS);
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -5046,10 +5116,12 @@ export function AccountsPage() {
       pageSize,
       accountDisplayMode,
       layoutMode,
+      cardDensity,
     });
   }, [
     accountDisplayMode,
     accountSort,
+    cardDensity,
     layoutMode,
     operationalFilter,
     pageSize,
@@ -5072,6 +5144,7 @@ export function AccountsPage() {
       pageSize,
       accountDisplayMode,
       layoutMode,
+      cardDensity,
       view: activeView,
       healthMode,
       account: selectedRowKey,
@@ -5088,6 +5161,7 @@ export function AccountsPage() {
       accountDisplayMode,
       accountSort,
       activeView,
+      cardDensity,
       detailTab,
       healthMode,
       layoutMode,
@@ -5190,6 +5264,7 @@ export function AccountsPage() {
       setPageSize(next.pageSize);
       setAccountDisplayMode(next.accountDisplayMode);
       setLayoutMode(next.layoutMode);
+      setCardDensity(next.cardDensity);
       setSelectedRowKey(next.account);
       setDetailTab(next.detailTab);
       setOauthExcludedEditorProvider(next.editor === 'excluded' ? next.editorProvider : null);
@@ -7409,6 +7484,7 @@ export function AccountsPage() {
         .filter((row) => !row.runtimeOnly)
         .map((row) => getAuthFilePatchTarget(row.raw));
       if (patchTargets.length === 0) return;
+      lockStatusOrder();
       setStatusUpdating(true);
       try {
         await batchSetStatus(patchTargets, enabled);
@@ -7416,9 +7492,17 @@ export function AccountsPage() {
         deselectAll();
       } finally {
         setStatusUpdating(false);
+        releaseStatusOrderLockAfterSettle();
       }
     },
-    [batchSetStatus, deselectAll, loadFiles, selectedRows]
+    [
+      batchSetStatus,
+      deselectAll,
+      loadFiles,
+      lockStatusOrder,
+      releaseStatusOrderLockAfterSettle,
+      selectedRows,
+    ]
   );
 
   const patchPriorityRows = useCallback(
@@ -8061,7 +8145,10 @@ export function AccountsPage() {
           ]
             .filter(Boolean)
             .join(' ')}
-          onClick={() => setLayoutMode('table')}
+          onClick={() => {
+            setLayoutMode('table');
+            setCardDensity('full');
+          }}
           title={t('accounts.view_mode_table')}
           aria-label={t('accounts.view_mode_table')}
           aria-pressed={effectiveLayoutMode === 'table'}
@@ -8072,16 +8159,41 @@ export function AccountsPage() {
           type="button"
           className={[
             styles.viewModeButton,
-            effectiveLayoutMode === 'grid' ? styles.viewModeButtonActive : '',
+            effectiveLayoutMode === 'grid' && cardDensity === 'full'
+              ? styles.viewModeButtonActive
+              : '',
           ]
             .filter(Boolean)
             .join(' ')}
-          onClick={() => setLayoutMode('grid')}
+          onClick={() => {
+            setLayoutMode('grid');
+            setCardDensity('full');
+          }}
           title={t('accounts.view_mode_grid')}
           aria-label={t('accounts.view_mode_grid')}
-          aria-pressed={effectiveLayoutMode === 'grid'}
+          aria-pressed={effectiveLayoutMode === 'grid' && cardDensity === 'full'}
         >
           {t('accounts.view_mode_grid')}
+        </button>
+        <button
+          type="button"
+          className={[
+            styles.viewModeButton,
+            effectiveLayoutMode === 'grid' && cardDensity === 'compact'
+              ? styles.viewModeButtonActive
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          onClick={() => {
+            setLayoutMode('grid');
+            setCardDensity('compact');
+          }}
+          title={t('accounts.view_mode_compact')}
+          aria-label={t('accounts.view_mode_compact')}
+          aria-pressed={effectiveLayoutMode === 'grid' && cardDensity === 'compact'}
+        >
+          {t('accounts.view_mode_compact')}
         </button>
       </div>
     );
@@ -9030,6 +9142,7 @@ export function AccountsPage() {
                   data-account-card={row.selectionKey}
                   className={[
                     styles.accountGridCard,
+                    isCompactCard ? styles.accountGridCardCompact : '',
                     row.disabled ? styles.accountGridCardDisabled : '',
                     selectedRowKey === row.selectionKey ? styles.accountCardSelected : '',
                     selectedFiles.has(row.selectionKey) ? styles.accountCardBulkSelected : '',
@@ -9068,31 +9181,11 @@ export function AccountsPage() {
                           <button
                             type="button"
                             className={styles.accountIdentityCopyTarget}
-                            title={row.accountLabel}
-                            aria-label={`${t('common.copy')} ${row.accountLabel}`}
-                            onClick={(event) =>
-                              void handleCopyIdentityText(
-                                event,
-                                row.accountLabel,
-                                `${row.selectionKey}:account`
-                              )
+                            title={
+                              row.accountLabel
+                                ? `${row.accountLabel} · ${row.fileName}`
+                                : row.fileName
                             }
-                          >
-                            <strong className={styles.accountIdentityTitle}>
-                              {getDisplayAccount(row)}
-                            </strong>
-                          </button>
-                          {copiedIdentityKey === `${row.selectionKey}:account` ? (
-                            <span className={styles.accountIdentityCopyHint}>
-                              {t('accounts.copy_feedback_copied')}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className={styles.accountIdentityCopyLine}>
-                          <button
-                            type="button"
-                            className={styles.accountIdentityCopyTarget}
-                            title={row.fileName}
                             aria-label={`${t('common.copy')} ${row.fileName}`}
                             onClick={(event) =>
                               void handleCopyIdentityText(
@@ -9102,9 +9195,9 @@ export function AccountsPage() {
                               )
                             }
                           >
-                            <span className={styles.accountCardFile}>
+                            <strong className={styles.accountIdentityTitle}>
                               {getDisplayFileName(row.fileName)}
-                            </span>
+                            </strong>
                           </button>
                           {copiedIdentityKey === `${row.selectionKey}:file` ? (
                             <span className={styles.accountIdentityCopyHint}>
@@ -9278,102 +9371,101 @@ export function AccountsPage() {
                           {t('accounts.col_priority')} {ctx.item.identity.priority}
                         </button>
                       )}
+                      {editingNoteState?.rowKey === row.selectionKey ? (
+                        <div
+                          className={styles.accountGridCardNoteEditRow}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <IconFileText size={12} className={styles.accountGridCardNoteIcon} />
+                          <input
+                            ref={inlineNoteInputRef}
+                            type="text"
+                            data-account-note-input={row.selectionKey}
+                            className={styles.accountGridCardNoteInput}
+                            value={editingNoteState.value}
+                            placeholder={t('accounts.note_placeholder_empty', { defaultValue: '备注' })}
+                            aria-label={t('accounts.note_edit', { defaultValue: '编辑备注' })}
+                            disabled={inlineNoteSaving}
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                            onChange={(e) =>
+                              setEditingNoteState((prev) =>
+                                prev ? { ...prev, value: e.target.value } : null
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                e.currentTarget.blur();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelInlineNoteEdit();
+                              }
+                            }}
+                            onBlur={(e) => {
+                              void handleInlineNoteBlur(row, e.currentTarget.value);
+                            }}
+                          />
+                        </div>
+                      ) : row.runtimeOnly ? (
+                        <div
+                          className={`${styles.accountGridCardNoteRow} ${styles.accountGridCardNoteReadOnly} ${
+                            !row.note?.trim() ? styles.accountGridCardNoteRowEmpty : ''
+                          }`}
+                          title={
+                            row.note?.trim()
+                              ? `${t('auth_files.note_label')}: ${row.note.trim()}`
+                              : undefined
+                          }
+                        >
+                          <IconFileText size={12} className={styles.accountGridCardNoteIcon} />
+                          <span
+                            className={`${styles.accountGridCardNoteText} ${
+                              !row.note?.trim() ? styles.accountGridCardNotePlaceholder : ''
+                            }`}
+                          >
+                            {row.note?.trim() || t('accounts.note_placeholder_empty', { defaultValue: '备注' })}
+                          </span>
+                        </div>
+                      ) : (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          data-account-note-trigger={row.selectionKey}
+                          className={`${styles.accountGridCardNoteRow} ${
+                            !row.note?.trim() ? styles.accountGridCardNoteRowEmpty : ''
+                          }`}
+                          title={
+                            row.note?.trim()
+                              ? `${t('auth_files.note_label')}: ${row.note.trim()} (${t('accounts.note_edit', { defaultValue: '编辑备注' })})`
+                              : `${t('accounts.note_edit', { defaultValue: '编辑备注' })}`
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startInlineNoteEdit(row);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              startInlineNoteEdit(row);
+                            }
+                          }}
+                        >
+                          <IconFileText size={12} className={styles.accountGridCardNoteIcon} />
+                          <span
+                            className={`${styles.accountGridCardNoteText} ${
+                              !row.note?.trim() ? styles.accountGridCardNotePlaceholder : ''
+                            }`}
+                          >
+                            {row.note?.trim() || t('accounts.note_placeholder_empty', { defaultValue: '备注' })}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  {editingNoteState?.rowKey === row.selectionKey ? (
-                    <div
-                      className={styles.accountGridCardNoteEditRow}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <IconFileText size={12} className={styles.accountGridCardNoteIcon} />
-                      <input
-                        ref={inlineNoteInputRef}
-                        type="text"
-                        data-account-note-input={row.selectionKey}
-                        className={styles.accountGridCardNoteInput}
-                        value={editingNoteState.value}
-                        placeholder={t('accounts.note_placeholder_empty', { defaultValue: '备注' })}
-                        aria-label={t('accounts.note_edit', { defaultValue: '编辑备注' })}
-                        disabled={inlineNoteSaving}
-                        onClick={(e) => e.stopPropagation()}
-                        onDoubleClick={(e) => e.stopPropagation()}
-                        onChange={(e) =>
-                          setEditingNoteState((prev) =>
-                            prev ? { ...prev, value: e.target.value } : null
-                          )
-                        }
-                        onKeyDown={(e) => {
-                          e.stopPropagation();
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            e.currentTarget.blur();
-                          } else if (e.key === 'Escape') {
-                            e.preventDefault();
-                            cancelInlineNoteEdit();
-                          }
-                        }}
-                        onBlur={(e) => {
-                          void handleInlineNoteBlur(row, e.currentTarget.value);
-                        }}
-                      />
-                    </div>
-                  ) : row.runtimeOnly ? (
-                    <div
-                      className={`${styles.accountGridCardNoteRow} ${styles.accountGridCardNoteReadOnly} ${
-                        !row.note?.trim() ? styles.accountGridCardNoteRowEmpty : ''
-                      }`}
-                      title={
-                        row.note?.trim()
-                          ? `${t('auth_files.note_label')}: ${row.note.trim()}`
-                          : undefined
-                      }
-                    >
-                      <IconFileText size={12} className={styles.accountGridCardNoteIcon} />
-                      <span
-                        className={`${styles.accountGridCardNoteText} ${
-                          !row.note?.trim() ? styles.accountGridCardNotePlaceholder : ''
-                        }`}
-                      >
-                        {row.note?.trim() || t('accounts.note_placeholder_empty', { defaultValue: '备注' })}
-                      </span>
-                    </div>
-                  ) : (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      data-account-note-trigger={row.selectionKey}
-                      className={`${styles.accountGridCardNoteRow} ${
-                        !row.note?.trim() ? styles.accountGridCardNoteRowEmpty : ''
-                      }`}
-                      title={
-                        row.note?.trim()
-                          ? `${t('auth_files.note_label')}: ${row.note.trim()} (${t('accounts.note_edit', { defaultValue: '编辑备注' })})`
-                          : `${t('accounts.note_edit', { defaultValue: '编辑备注' })}`
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startInlineNoteEdit(row);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          startInlineNoteEdit(row);
-                        }
-                      }}
-                    >
-                      <IconFileText size={12} className={styles.accountGridCardNoteIcon} />
-                      <span
-                        className={`${styles.accountGridCardNoteText} ${
-                          !row.note?.trim() ? styles.accountGridCardNotePlaceholder : ''
-                        }`}
-                      >
-                        {row.note?.trim() || t('accounts.note_placeholder_empty', { defaultValue: '备注' })}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                  </div>
 
                   {renderAccountHistory(row, ctx, true)}
 
@@ -10357,7 +10449,10 @@ export function AccountsPage() {
       <Button
         variant="secondary"
         size="sm"
-        onClick={() => void refreshActiveWorkspace()}
+        onClick={() => {
+          clearStatusOrderLock();
+          void refreshActiveWorkspace();
+        }}
         disabled={loading}
       >
         <IconRefreshCw size={15} />

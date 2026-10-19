@@ -461,10 +461,10 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  gap: 15px;
+  gap: 10px;
   min-width: 0;
-  min-height: 250px;
-  padding: 14px 16px;
+  min-height: 220px;
+  padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
   border-radius: 12px;
   background: var(--bg-primary);
@@ -500,6 +500,83 @@
   &.accountGridCardDisabled {
     opacity: 0.76;
     background: color-mix(in srgb, var(--bg-primary) 88%, var(--accounts-muted-surface));
+  }
+
+  &.accountGridCardCompact {
+    gap: 6px;
+    min-height: 0;
+    padding: 8px 10px;
+
+    .accountGridCardMetaSection,
+    .accountGridCardHistory {
+      display: none;
+    }
+
+    .accountGridCardHeader {
+      align-items: center;
+      gap: 8px;
+    }
+
+    .accountGridCardIdentity {
+      gap: 7px;
+    }
+
+    .accountProviderLogo {
+      width: 22px;
+      height: 22px;
+
+      img {
+        max-width: 22px;
+        max-height: 22px;
+      }
+    }
+
+    .accountIdentityTitle {
+      font-size: 12px;
+    }
+
+    .accountGridCardRecentStatus {
+      gap: 3px;
+      padding-top: 0;
+    }
+
+    .accountGridCardRecentStatusMetrics {
+      gap: 6px;
+      font-size: 10.5px;
+    }
+
+    .accountGridCardRecentStatusBar .statusBlock {
+      height: 4px;
+    }
+
+    .quotaWindowCard {
+      grid-template-rows: auto 5px auto;
+      row-gap: 4px;
+    }
+
+    .quotaWindowHeader {
+      font-size: 11px;
+    }
+
+    .accountGridCardQuota {
+      gap: 3px;
+      padding-top: 0;
+    }
+
+    .accountGridCardQuotaList {
+      gap: 6px 10px;
+    }
+
+    .accountGridCardFooter {
+      padding-top: 5px;
+
+      button {
+        height: 24px !important;
+        min-height: 24px !important;
+        padding-inline: 7px;
+        font-size: 11px;
+      }
+    }
   }
 }
 
@@ -543,7 +620,7 @@
 .accountGridCardMetaSection {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -560,7 +637,14 @@
   align-items: center;
   flex-wrap: nowrap;
   gap: 8px;
+  flex: 1 1 auto;
   min-width: 0;
+
+  .accountGridCardNoteRow,
+  .accountGridCardNoteEditRow {
+    flex: 1 1 auto;
+    width: auto;
+  }
 
   .accountPriorityButton,
   .accountPriorityInput {
@@ -832,9 +916,9 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid color-mix(in srgb, var(--accounts-border) 60%, transparent);
   box-sizing: border-box;
   cursor: pointer;
@@ -854,9 +938,9 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  padding-top: 8px;
+  padding-top: 6px;
   margin-top: auto;
   border-top: 1px solid color-mix(in srgb, var(--accounts-border) 60%, transparent);
   box-sizing: border-box;
@@ -881,26 +965,40 @@
 }
 
 .accountGridCardQuotaList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 6px 12px;
   width: 100%;
 
-  > .quotaWindowCard + .quotaWindowCard {
-    padding-top: 7px;
-    border-top: 1px dashed color-mix(in srgb, var(--accounts-border) 65%, transparent);
+  .quotaWindowCard {
+    row-gap: 6px;
+  }
+
+  .quotaWindowCard + .quotaWindowCard {
+    padding-top: 0;
+    border-top: 0;
   }
 
   .accountGridCardQuotaGroup {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
   }
 
   .accountGridCardQuotaGroup + .accountGridCardQuotaGroup {
-    padding-top: 8px;
-    border-top: 1px dashed color-mix(in srgb, var(--accounts-border) 52%, transparent);
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  & > .quotaWindowCard:only-child,
+  & > .accountGridCardQuotaGroup:only-child {
+    grid-column: 1 / -1;
+  }
+
+  @include mobile {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -991,7 +1089,7 @@
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
   }
 
@@ -1000,7 +1098,7 @@
   }
 
   .statusBlock {
-    height: 6px;
+    height: 5px;
     border-radius: 999px;
   }
 
@@ -1466,23 +1564,23 @@
 .accountGridCardHistory {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   height: auto;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid color-mix(in srgb, var(--accounts-border) 65%, transparent);
 
   .accountHistoryGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
+    gap: 5px;
   }
 
   .accountHistoryMetric {
     display: grid;
     grid-template-columns: 17px minmax(0, 1fr);
     gap: 1px 3px;
-    min-height: 48px;
-    padding: 7px 4px;
+    min-height: 42px;
+    padding: 6px 4px;
     border: 1px solid color-mix(in srgb, var(--accounts-border) 72%, transparent);
     border-radius: 7px;
     background: color-mix(in srgb, var(--accounts-surface) 42%, transparent);
@@ -2079,8 +2177,7 @@
   display: flex;
   align-items: center;
   column-gap: 6px;
-  row-gap: 2px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-height: 15px;
   min-width: 0;
   line-height: 1;
@@ -2093,7 +2190,8 @@
   gap: 3px;
   min-width: 0;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
 }
 
 .quotaForecastGroup {
@@ -2150,6 +2248,9 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .quotaWindowSlash {
@@ -2158,6 +2259,7 @@
   font-weight: 400;
   line-height: 1;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .quotaWindowTokenCompact {
@@ -2167,6 +2269,9 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .quotaWindowCostPredicted {
@@ -2176,6 +2281,9 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .quotaWindowTokenPredictedCompact {
@@ -2185,6 +2293,9 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .quotaSlotEmpty {
@@ -5620,6 +5731,15 @@
   border-radius: 14px;
   background: var(--accounts-surface);
   box-shadow: var(--shadow-lg);
+}
+
+/* 卡片容器面板换用更深的底色，让白色卡片与背景对比更明显 */
+.tablePanel {
+  background: color-mix(in srgb, var(--app-bg) 86%, var(--app-text-primary));
+}
+
+:global([data-theme='dark']) .tablePanel {
+  background: var(--app-bg);
 }
 
 .controlsPanel {

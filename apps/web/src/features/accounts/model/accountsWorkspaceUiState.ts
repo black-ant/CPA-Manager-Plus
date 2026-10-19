@@ -9,6 +9,7 @@ import type { QuotaAccountDisplayMode } from '@/components/quota/quotaDisplay';
 
 export type AccountOperationalFilter = 'all' | 'reauth' | 'cooldown' | 'automation' | 'recovered';
 export type AccountsLayoutMode = 'table' | 'grid';
+export type AccountsCardDensity = 'full' | 'compact';
 
 export interface AccountsWorkspaceUiState {
   search: string;
@@ -21,6 +22,7 @@ export interface AccountsWorkspaceUiState {
   pageSize: number;
   accountDisplayMode: QuotaAccountDisplayMode;
   layoutMode: AccountsLayoutMode;
+  cardDensity: AccountsCardDensity;
 }
 
 const STORAGE_KEY = 'cpa_manager_accounts_workspace_ui_v1';
@@ -54,6 +56,7 @@ export const DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE: AccountsWorkspaceUiState = {
   pageSize: 10,
   accountDisplayMode: 'full',
   layoutMode: 'table',
+  cardDensity: 'full',
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -115,6 +118,7 @@ export const normalizeAccountsWorkspaceUiState = (value: unknown): AccountsWorks
         : value.layoutMode === 'table'
           ? 'table'
           : DEFAULT_ACCOUNTS_WORKSPACE_UI_STATE.layoutMode,
+    cardDensity: value.cardDensity === 'compact' ? 'compact' : 'full',
   };
 };
 
