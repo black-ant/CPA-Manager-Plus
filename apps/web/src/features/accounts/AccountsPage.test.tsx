@@ -13228,7 +13228,7 @@ describe('AccountsPage replacement flows', () => {
     expect(mocks.getAccountWindowUsage).toHaveBeenCalledTimes(1);
   });
 
-  it('presents quota window with remaining in header, used and forecast in fixed slots, and reset at bottom right', async () => {
+  it('presents quota window with label, remaining, used, forecast and reset merged in one line', async () => {
     const file = makeCodexFile('codex-slots.json', 'auth-slots', 'slots@example.com');
     mocks.files = [file];
     mocks.panelFeatureAvailability = {
@@ -13294,40 +13294,38 @@ describe('AccountsPage replacement flows', () => {
     const card = findAccountCardByKey(renderer, getAuthFileSelectionKey(file));
     const cardText = readText(card);
 
-    // 1. Header shows window label and percentage (without reset time)
+    // 1. Merged line shows window label, percentage and relative reset time
     expect(cardText).toContain('5h');
     expect(cardText).toContain('Rem');
     expect(cardText).toContain('60%');
     expect(cardText).toContain(expectedRelativeReset);
 
-    // 2. Second line displays "used" icon, current cost and token separated by slash
+    // 2. Merged line displays "used" icon, current cost and token separated by slash
     expect(card.findAllByType(IconChartLine).length).toBeGreaterThan(0);
     expect(cardText).toContain('$0.50/50.0K');
 
-    // 3. Second line displays "forecast" icon and predicted values separated by slash
+    // 3. Merged line displays "forecast" icon and predicted values separated by slash
     expect(card.findAllByType(IconTrendingUp).length).toBeGreaterThan(0);
     expect(cardText).toContain('$1.25/125.0K');
 
     // 4. Arrow must NOT be rendered
     expect(cardText).not.toContain('→');
 
-    // 5. Reset time is rendered in usage line (bottom right), not in header
+    // 5. Everything is rendered inside the single merged line
     const windowCards = card.findAll((node) => typeof node.props['data-account-quota-window'] === 'string');
     expect(windowCards).toHaveLength(1);
     const windowCard = windowCards[0];
     expect(windowCard.props.title).toContain('5h: Rem 60%');
-    const headerNode = windowCard.children[0];
-    const headerText = readText(headerNode);
-    expect(headerText).not.toContain(expectedRelativeReset);
-
-    // Usage line contains relative reset time at bottom right
-    const usageLineNode = windowCard.children[2];
-    const usageLineText = readText(usageLineNode);
-    expect(usageLineText).toContain(expectedRelativeReset);
-    expect(usageLineText).not.toContain(formatQuotaResetDisplay(resetAtMs, resetLabel, 'zh-CN'));
+    const mergedLineNode = windowCard.children[0];
+    const mergedLineText = readText(mergedLineNode);
+    expect(mergedLineText).toContain('5h');
+    expect(mergedLineText).toContain('60%');
+    expect(mergedLineText).toContain('$0.50/50.0K');
+    expect(mergedLineText).toContain(expectedRelativeReset);
+    expect(mergedLineText).not.toContain(formatQuotaResetDisplay(resetAtMs, resetLabel, 'zh-CN'));
   });
 
-  it('renders quota reset time in Chinese (e.g. 5 天后 / 5 小时后) at bottom right when locale is zh-CN', async () => {
+  it('renders quota reset time in Chinese (e.g. 5 天后 / 5 小时后) in the merged line when locale is zh-CN', async () => {
     mocks.language = 'zh-CN';
     const nowMs = Date.now();
     const resetAtMs = nowMs + 5 * 24 * 60 * 60 * 1000 + 60 * 1000;
@@ -13359,19 +13357,14 @@ describe('AccountsPage replacement flows', () => {
     expect(windowCards).toHaveLength(1);
     const windowCard = windowCards[0];
 
-    // Header contains label and percentage, but NOT reset time
-    const headerNode = windowCard.children[0];
-    const headerText = readText(headerNode);
-    expect(headerText).toContain('5h');
-    expect(headerText).toContain('剩余');
-    expect(headerText).toContain('80%');
+    // Merged line contains label, percentage and reset time
+    const mergedLineNode = windowCard.children[0];
+    const mergedLineText = readText(mergedLineNode);
+    expect(mergedLineText).toContain('5h');
+    expect(mergedLineText).toContain('剩余');
+    expect(mergedLineText).toContain('80%');
     expect(windowCard.props.title).toContain('5h: 剩余 80%');
-    expect(headerText).not.toContain('5 天后');
-
-    // Usage line contains reset time at bottom right
-    const usageLineNode = windowCard.children[2];
-    const usageLineText = readText(usageLineNode);
-    expect(usageLineText).toContain('5 天后');
+    expect(mergedLineText).toContain('5 天后');
   });
 
   it('loads history for a deep-linked credential outside the visible page', async () => {

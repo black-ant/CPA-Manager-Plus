@@ -1407,14 +1407,13 @@ describe('useAuthFilesData handleDelete', () => {
     const confirmation = mocks.showConfirmation.mock.calls[0]?.[0] as
       | {
           onConfirm?: () => Promise<void>;
-          secondConfirmation?: { message?: string; confirmText?: string };
+          message?: string;
+          confirmText?: string;
         }
       | undefined;
     expect(mocks.deleteFileByName).not.toHaveBeenCalled();
-    expect(confirmation?.secondConfirmation).toMatchObject({
-      message: 'auth_files.delete_second_confirm:owned.json',
-      confirmText: 'auth_files.delete_second_action',
-    });
+    expect(confirmation?.message).toBe('auth_files.delete_second_confirm:owned.json');
+    expect(confirmation?.confirmText).toBe('auth_files.delete_second_action');
     await act(async () => confirmation?.onConfirm?.());
 
     expect(mocks.deleteFileByName).toHaveBeenCalledWith(
@@ -1473,11 +1472,9 @@ describe('useAuthFilesData handleDelete', () => {
 
     act(() => hook.getCurrent().handleDelete(disabledFile));
     const confirmation = mocks.showConfirmation.mock.calls[0]?.[0] as
-      | { onConfirm?: () => Promise<void>; secondConfirmation?: { message?: string } }
+      | { onConfirm?: () => Promise<void>; message?: string }
       | undefined;
-    expect(confirmation?.secondConfirmation?.message).toBe(
-      'auth_files.delete_second_confirm:owned.json'
-    );
+    expect(confirmation?.message).toBe('auth_files.delete_second_confirm:owned.json');
     await act(async () => confirmation?.onConfirm?.());
 
     expect(mocks.deleteFileByName).toHaveBeenCalledWith(
@@ -1583,11 +1580,9 @@ describe('useAuthFilesData handleDelete', () => {
       | {
           message?: string;
           onConfirm?: () => Promise<void>;
-          secondConfirmation?: { message?: string };
         }
       | undefined;
-    expect(confirmation?.message).toBe('auth_files.delete_shared_confirm:shared.json');
-    expect(confirmation?.secondConfirmation?.message).toBe(
+    expect(confirmation?.message).toBe(
       'auth_files.delete_shared_second_confirm:shared.json'
     );
     await act(async () => confirmation?.onConfirm?.());
@@ -1736,7 +1731,7 @@ describe('useAuthFilesData handleDelete', () => {
 });
 
 describe('useAuthFilesData batchDelete', () => {
-  it('requires a second confirmation and uses verified runtime selectors', async () => {
+  it('confirms once and uses verified runtime selectors', async () => {
     const first = {
       id: 'runtime-first',
       name: 'first.json',
@@ -1760,11 +1755,11 @@ describe('useAuthFilesData batchDelete', () => {
 
     act(() => hook.getCurrent().batchDelete([first, second]));
     const confirmation = mocks.showConfirmation.mock.calls[0]?.[0] as
-      | { onConfirm?: () => Promise<void>; secondConfirmation?: { message?: string } }
+      | { onConfirm?: () => Promise<void>; message?: string }
       | undefined;
 
     expect(mocks.deleteFileByName).not.toHaveBeenCalled();
-    expect(confirmation?.secondConfirmation?.message).toBe('auth_files.delete_many_second_confirm');
+    expect(confirmation?.message).toBe('auth_files.delete_many_second_confirm');
 
     await act(async () => confirmation?.onConfirm?.());
 

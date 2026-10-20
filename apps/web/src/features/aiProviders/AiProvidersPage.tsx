@@ -42,7 +42,6 @@ import {
   ProviderKeyConfig,
 } from '@/types';
 import { createConfigMutationLock } from './model/configMutationLock';
-import { buildProviderDeleteSecondConfirmation } from './model/deleteConfirmation';
 import styles from './AiProvidersPage.module.scss';
 
 const PROVIDER_TABLE_DEFAULT_PAGE_SIZE = 10;
@@ -1309,14 +1308,12 @@ export function AiProvidersPage() {
     if (!entry) return;
     showConfirmation({
       title: t('ai_providers.gemini_delete_title', { defaultValue: 'Delete Gemini Key' }),
-      message: t('ai_providers.gemini_delete_confirm'),
+      message: t('ai_providers.delete_second_confirm', {
+        provider: PROVIDER_KIND_LABELS.gemini,
+        target,
+      }),
       variant: 'danger',
-      confirmText: t('common.next'),
-      secondConfirmation: buildProviderDeleteSecondConfirmation(
-        t,
-        PROVIDER_KIND_LABELS.gemini,
-        target
-      ),
+      confirmText: t('ai_providers.delete_second_action'),
       onConfirm: async () => {
         try {
           await providersApi.deleteGeminiKey(entry.apiKey, entry.baseUrl);
@@ -1338,14 +1335,12 @@ export function AiProvidersPage() {
     if (!entry) return;
     showConfirmation({
       title: t('ai_providers.interactions_delete_title'),
-      message: t('ai_providers.interactions_delete_confirm'),
+      message: t('ai_providers.delete_second_confirm', {
+        provider: PROVIDER_KIND_LABELS.interactions,
+        target,
+      }),
       variant: 'danger',
-      confirmText: t('common.next'),
-      secondConfirmation: buildProviderDeleteSecondConfirmation(
-        t,
-        PROVIDER_KIND_LABELS.interactions,
-        target
-      ),
+      confirmText: t('ai_providers.delete_second_action'),
       onConfirm: async () => {
         try {
           await providersApi.deleteInteractionsKey(entry.apiKey, entry.baseUrl);
@@ -1383,14 +1378,12 @@ export function AiProvidersPage() {
           type === 'codex' ? 'Codex' : type === 'xai' ? 'xAI' : type === 'meta' ? 'Meta' : 'Claude'
         } Config`,
       }),
-      message: t(`ai_providers.${type}_delete_confirm`),
+      message: t('ai_providers.delete_second_confirm', {
+        provider: PROVIDER_KIND_LABELS[type],
+        target,
+      }),
       variant: 'danger',
-      confirmText: t('common.next'),
-      secondConfirmation: buildProviderDeleteSecondConfirmation(
-        t,
-        PROVIDER_KIND_LABELS[type],
-        target
-      ),
+      confirmText: t('ai_providers.delete_second_action'),
       onConfirm: async () => {
         try {
           if (type === 'codex') {
@@ -1435,14 +1428,12 @@ export function AiProvidersPage() {
     if (!entry) return;
     showConfirmation({
       title: t('ai_providers.vertex_delete_title', { defaultValue: 'Delete Vertex Config' }),
-      message: t('ai_providers.vertex_delete_confirm'),
+      message: t('ai_providers.delete_second_confirm', {
+        provider: PROVIDER_KIND_LABELS.vertex,
+        target,
+      }),
       variant: 'danger',
-      confirmText: t('common.next'),
-      secondConfirmation: buildProviderDeleteSecondConfirmation(
-        t,
-        PROVIDER_KIND_LABELS.vertex,
-        target
-      ),
+      confirmText: t('ai_providers.delete_second_action'),
       onConfirm: async () => {
         try {
           await providersApi.deleteVertexConfig(entry.apiKey, entry.baseUrl);
@@ -1464,14 +1455,12 @@ export function AiProvidersPage() {
     if (!entry) return;
     showConfirmation({
       title: t('ai_providers.openai_delete_title', { defaultValue: 'Delete OpenAI Provider' }),
-      message: t('ai_providers.openai_delete_confirm'),
+      message: t('ai_providers.delete_second_confirm', {
+        provider: PROVIDER_KIND_LABELS.openai,
+        target,
+      }),
       variant: 'danger',
-      confirmText: t('common.next'),
-      secondConfirmation: buildProviderDeleteSecondConfirmation(
-        t,
-        PROVIDER_KIND_LABELS.openai,
-        target
-      ),
+      confirmText: t('ai_providers.delete_second_action'),
       onConfirm: async () => {
         try {
           await providersApi.deleteOpenAIProvider(entry.name);

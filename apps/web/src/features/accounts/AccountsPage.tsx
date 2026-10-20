@@ -8803,54 +8803,10 @@ export function AccountsPage() {
         data-account-quota-window={window.key}
         title={cardTitle}
       >
-        <span className={styles.quotaWindowHeader}>
+        <span className={styles.quotaWindowUsageLine}>
           <span className={styles.quotaWindowLabel} title={readableLabel}>
             {readableLabel}
           </span>
-          <span className={styles.quotaWindowMeta}>
-            {hasCodexResetCredits && windowIndex === 0 ? (
-              <>
-                <span
-                  className={styles.quotaWindowResetCredits}
-                  data-account-reset-credits={row.selectionKey}
-                >
-                  <span
-                    className={styles.quotaWindowResetCreditsIcon}
-                    aria-hidden="true"
-                  >
-                    <IconRotateCcw size={11} strokeWidth={2.4} />
-                  </span>
-                  <strong className={styles.quotaWindowResetCreditsCount}>
-                    {codexResetCreditsCount}
-                  </strong>
-                </span>
-                <span className={styles.quotaWindowSep} aria-hidden="true" />
-              </>
-            ) : null}
-            <strong className={styles.quotaWindowPercent}>
-              {remainingParts ? (
-                <>
-                  <span className={styles.quotaWindowPercentPrefix}>
-                    {remainingParts.prefix}
-                  </span>
-                  <span className={styles.quotaWindowPercentValue}>
-                    {remainingParts.percent}
-                  </span>
-                </>
-              ) : (
-                percentText
-              )}
-            </strong>
-            {extraMeta}
-          </span>
-        </span>
-        <span className={styles.quotaTrack} aria-hidden="true">
-          <span
-            className={`${styles.quotaBar} ${barClass}`}
-            style={{ width: `${windowWidth}%` }}
-          />
-        </span>
-        <span className={styles.quotaWindowUsageLine}>
           {hasActual ? (
             <span
               className={styles.quotaUsageGroup}
@@ -8915,6 +8871,48 @@ export function AccountsPage() {
               {relativeReset}
             </span>
           ) : null}
+          <span className={styles.quotaWindowMeta}>
+            {hasCodexResetCredits && windowIndex === 0 ? (
+              <>
+                <span
+                  className={styles.quotaWindowResetCredits}
+                  data-account-reset-credits={row.selectionKey}
+                >
+                  <span
+                    className={styles.quotaWindowResetCreditsIcon}
+                    aria-hidden="true"
+                  >
+                    <IconRotateCcw size={11} strokeWidth={2.4} />
+                  </span>
+                  <strong className={styles.quotaWindowResetCreditsCount}>
+                    {codexResetCreditsCount}
+                  </strong>
+                </span>
+                <span className={styles.quotaWindowSep} aria-hidden="true" />
+              </>
+            ) : null}
+            <strong className={styles.quotaWindowPercent}>
+              {remainingParts ? (
+                <>
+                  <span className={styles.quotaWindowPercentPrefix}>
+                    {remainingParts.prefix}
+                  </span>
+                  <span className={styles.quotaWindowPercentValue}>
+                    {remainingParts.percent}
+                  </span>
+                </>
+              ) : (
+                percentText
+              )}
+            </strong>
+            {extraMeta}
+          </span>
+        </span>
+        <span className={styles.quotaTrack} aria-hidden="true">
+          <span
+            className={`${styles.quotaBar} ${barClass}`}
+            style={{ width: `${windowWidth}%` }}
+          />
         </span>
       </span>
     );
@@ -9501,6 +9499,9 @@ export function AccountsPage() {
                           {t('accounts.detail_overview_recent_status_title')}
                         </span>
                       </div>
+                      <div className={styles.accountGridCardRecentStatusBar}>
+                        <ProviderStatusBar statusData={ctx.recentStatusData} styles={styles} />
+                      </div>
                       <div className={styles.accountGridCardRecentStatusMetrics}>
                         <span
                           className={styles.accountGridCardRecentStatusPillSuccess}
@@ -9519,10 +9520,6 @@ export function AccountsPage() {
                           <strong>{ctx.overviewRecentStatus.failure}</strong>
                         </span>
                       </div>
-                    </div>
-
-                    <div className={styles.accountGridCardRecentStatusBar}>
-                      <ProviderStatusBar statusData={ctx.recentStatusData} styles={styles} />
                     </div>
 
                     {ctx.overviewRecentStatus.statusMessage ? (

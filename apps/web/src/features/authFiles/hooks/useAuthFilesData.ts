@@ -1259,21 +1259,10 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
       showConfirmation({
         title: t('auth_files.delete_title', { defaultValue: 'Delete File' }),
         message: sharedFile
-          ? t('auth_files.delete_shared_confirm', { name, count: expectedMembers.length })
-          : `${t('auth_files.delete_confirm')} "${name}" ?`,
+          ? t('auth_files.delete_shared_second_confirm', { name, count: expectedMembers.length })
+          : t('auth_files.delete_second_confirm', { name }),
         variant: 'danger',
-        confirmText: t('common.next'),
-        secondConfirmation: {
-          title: t('auth_files.delete_second_title'),
-          message: sharedFile
-            ? t('auth_files.delete_shared_second_confirm', {
-                name,
-                count: expectedMembers.length,
-              })
-            : t('auth_files.delete_second_confirm', { name }),
-          variant: 'danger',
-          confirmText: t('auth_files.delete_second_action'),
-        },
+        confirmText: t('auth_files.delete_second_action'),
         onConfirm: async () => {
           if (
             authFilesOperationGenerationRef.current !== confirmationGeneration ||
@@ -2104,18 +2093,13 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
       showConfirmation({
         title: options?.title ?? t('auth_files.batch_delete_title'),
         message:
-          options?.message ?? t('auth_files.batch_delete_confirm', { count: uniqueNames.length }),
-        variant: 'danger',
-        confirmText: options?.confirmText ?? t('common.next'),
-        secondConfirmation: {
-          title: t('auth_files.delete_many_second_title'),
-          message: t('auth_files.delete_many_second_confirm', {
+          options?.message ??
+          t('auth_files.delete_many_second_confirm', {
             count: uniqueNames.length,
             scope: t('auth_files.delete_scope_selected'),
           }),
-          variant: 'danger',
-          confirmText: t('auth_files.delete_second_action'),
-        },
+        variant: 'danger',
+        confirmText: options?.confirmText ?? t('auth_files.delete_second_action'),
         onConfirm: async () => {
           if (
             authFilesOperationGenerationRef.current !== confirmationGeneration ||
