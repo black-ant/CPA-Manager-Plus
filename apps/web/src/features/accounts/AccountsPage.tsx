@@ -1443,6 +1443,11 @@ export function AccountsPage() {
     () => readCompletedAccountReauthResultKeys(connectionFingerprint)
   );
   const [statusUpdating, setStatusUpdating] = useState(false);
+  // 乐观更新：启用/禁用开关点击后立即翻转，待服务端确认后再清除覆盖
+  const [
+    statusOptimisticOverrides,
+    setStatusOptimisticOverrides,
+  ] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [selectedRowKey, setSelectedRowKey] = useState<string | null>(
     () => initialWorkspaceUrlState.current.account
   );
@@ -4076,27 +4081,31 @@ export function AccountsPage() {
     return { codexQuotaBySelectionKey, codexHeaderSnapshotBySelectionKey };
   }, [files, getDisplayCodexHeaderSnapshot, getDisplayCodexQuota]);
 
-  const rows = useMemo(
-    () =>
-      buildAccountRows(
-        files,
-        baseQuotaStores,
-        effectiveInspectionResults,
-        accountQuotaOverrides,
-        freshAccountInspectionBySelectionKey,
-        credentialEvidenceBoundariesBySelectionKey,
-        credentialStatusBoundaries
-      ),
-    [
-      accountQuotaOverrides,
-      baseQuotaStores,
+  const rows = useMemo(() => {
+    const built = buildAccountRows(
       files,
-      credentialEvidenceBoundariesBySelectionKey,
-      credentialStatusBoundaries,
+      baseQuotaStores,
       effectiveInspectionResults,
+      accountQuotaOverrides,
       freshAccountInspectionBySelectionKey,
-    ]
-  );
+      credentialEvidenceBoundariesBySelectionKey,
+      credentialStatusBoundaries
+    );
+    if (statusOptimisticOverrides.size === 0) return built;
+    return built.map((row) => {
+      const enabled = statusOptimisticOverrides.get(row.selectionKey);
+      return enabled === undefined ? row : { ...row, disabled: !enabled };
+    });
+  }, [
+    accountQuotaOverrides,
+    baseQuotaStores,
+    files,
+    credentialEvidenceBoundariesBySelectionKey,
+    credentialStatusBoundaries,
+    effectiveInspectionResults,
+    freshAccountInspectionBySelectionKey,
+    statusOptimisticOverrides,
+  ]);
   const codexStatusBySelectionKey = useMemo(() => {
     const statusMap = new Map<string, ReturnType<typeof getAuthFileCodexStatus>>();
     rows.forEach((row) => {
@@ -7484,14 +7493,27 @@ export function AccountsPage() {
         .filter((row) => !row.runtimeOnly)
         .map((row) => getAuthFilePatchTarget(row.raw));
       if (patchTargets.length === 0) return;
+      const targetKeys = targets.map((row) => row.selectionKey);
       lockStatusOrder();
       setStatusUpdating(true);
+      // 乐观更新：立即翻转开关，服务端确认后清除覆盖；失败时快照会自动翻转回来
+      setStatusOptimisticOverrides((prev) => {
+        const next = new Map(prev);
+        targetKeys.forEach((key) => next.set(key, enabled));
+        return next;
+      });
       try {
         await batchSetStatus(patchTargets, enabled);
         if (patchTargets.length > 1) await loadFiles();
         deselectAll();
       } finally {
         setStatusUpdating(false);
+        setStatusOptimisticOverrides((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Map(prev);
+          targetKeys.forEach((key) => next.delete(key));
+          return next;
+        });
         releaseStatusOrderLockAfterSettle();
       }
     },
