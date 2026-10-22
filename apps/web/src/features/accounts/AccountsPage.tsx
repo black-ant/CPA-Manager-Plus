@@ -1442,7 +1442,9 @@ export function AccountsPage() {
   const [suppressedInspectionResultKeys, setSuppressedInspectionResultKeys] = useState<Set<string>>(
     () => readCompletedAccountReauthResultKeys(connectionFingerprint)
   );
-  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusUpdatingKeys, setStatusUpdatingKeys] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
   // 乐观更新：启用/禁用开关点击后立即翻转，待服务端确认后再清除覆盖
   const [
     statusOptimisticOverrides,
@@ -4613,6 +4615,7 @@ export function AccountsPage() {
   });
   const configurationDirty = configurationEditor.dirty;
   const configurationReload = configurationEditor.reload;
+  const configurationReset = configurationEditor.reset;
   const configurationSaving = configurationEditor.state?.saving === true;
   const handleAccountModelsRefresh = useCallback(async () => {
     if (!selectedRow) return;
@@ -4714,12 +4717,29 @@ export function AccountsPage() {
     [configurationEditor, showConfirmation, showNotification, t]
   );
   const handleAccountDelete = useCallback(
-    async (item: AuthFileItem) => {
+    (item: AuthFileItem) => {
       const deletesOpenCredential = getAuthFileSelectionKey(item) === selectedRowKey;
-      if (deletesOpenCredential && !(await confirmConfigurationDiscard(false))) return;
-      handleDelete(item);
+      if (deletesOpenCredential && configurationSaving) {
+        showNotification(t('accounts.config_save_in_progress'), 'info');
+        return;
+      }
+      // 删除当前打开的凭证时不再单独确认未保存修改，确认删除后再丢弃草稿，避免连续两次弹窗
+      handleDelete(
+        item,
+        deletesOpenCredential && configurationDirty
+          ? { onConfirmed: configurationReset }
+          : undefined
+      );
     },
-    [confirmConfigurationDiscard, handleDelete, selectedRowKey]
+    [
+      configurationDirty,
+      configurationReset,
+      configurationSaving,
+      handleDelete,
+      selectedRowKey,
+      showNotification,
+      t,
+    ]
   );
   const hasSelectedAccountDetail = activeView === 'accounts' && Boolean(selectedRowKey);
   const needsInspectionSummary = canLoadInspectionSummary;
@@ -7495,7 +7515,12 @@ export function AccountsPage() {
       if (patchTargets.length === 0) return;
       const targetKeys = targets.map((row) => row.selectionKey);
       lockStatusOrder();
-      setStatusUpdating(true);
+      // 逐行锁定：只禁用正在变更的行，其余开关保持可交互
+      setStatusUpdatingKeys((prev) => {
+        const next = new Set(prev);
+        targetKeys.forEach((key) => next.add(key));
+        return next;
+      });
       // 乐观更新：立即翻转开关，服务端确认后清除覆盖；失败时快照会自动翻转回来
       setStatusOptimisticOverrides((prev) => {
         const next = new Map(prev);
@@ -7504,10 +7529,20 @@ export function AccountsPage() {
       });
       try {
         await batchSetStatus(patchTargets, enabled);
-        if (patchTargets.length > 1) await loadFiles();
-        deselectAll();
+        if (patchTargets.length > 1) {
+          await loadFiles();
+          deselectAll();
+        }
       } finally {
-        setStatusUpdating(false);
+        setStatusUpdatingKeys((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Set(prev);
+          let changed = false;
+          targetKeys.forEach((key) => {
+            if (next.delete(key)) changed = true;
+          });
+          return changed ? next : prev;
+        });
         setStatusOptimisticOverrides((prev) => {
           if (prev.size === 0) return prev;
           const next = new Map(prev);
@@ -8527,7 +8562,7 @@ export function AccountsPage() {
               variant="secondary"
               size="sm"
               onClick={() => handleBatchStatus(true)}
-              disabled={disableControls || statusUpdating}
+              disabled={disableControls || statusUpdatingKeys.size > 0}
               title={t('accounts.enable')}
             >
               <IconCheck size={15} />
@@ -8537,7 +8572,7 @@ export function AccountsPage() {
               variant="danger"
               size="sm"
               onClick={() => handleBatchStatus(false)}
-              disabled={disableControls || statusUpdating}
+              disabled={disableControls || statusUpdatingKeys.size > 0}
               title={t('accounts.disable')}
             >
               <IconX size={15} />
@@ -8724,7 +8759,9 @@ export function AccountsPage() {
                 <ToggleSwitch
                   checked={!row.disabled}
                   onChange={(enabled) => void handleBatchStatus(enabled, [row])}
-                  disabled={disableControls || statusUpdating || row.runtimeOnly}
+                  disabled={
+                    disableControls || statusUpdatingKeys.has(row.selectionKey) || row.runtimeOnly
+                  }
                   ariaLabel={t('auth_files.status_toggle_label')}
                 />
               </div>
@@ -9241,7 +9278,11 @@ export function AccountsPage() {
                       <ToggleSwitch
                         checked={!row.disabled}
                         onChange={(enabled) => void handleBatchStatus(enabled, [row])}
-                        disabled={disableControls || statusUpdating || row.runtimeOnly}
+                        disabled={
+                          disableControls ||
+                          statusUpdatingKeys.has(row.selectionKey) ||
+                          row.runtimeOnly
+                        }
                         ariaLabel={t('auth_files.status_toggle_label')}
                       />
                     </div>
@@ -10218,7 +10259,10 @@ export function AccountsPage() {
               variant={selectedRow.disabled ? 'secondary' : 'danger'}
               onClick={() => handleBatchStatus(selectedRow.disabled, [selectedRow])}
               disabled={
-                disableControls || configurationSaving || statusUpdating || selectedRow.runtimeOnly
+                disableControls ||
+                configurationSaving ||
+                statusUpdatingKeys.has(selectedRow.selectionKey) ||
+                selectedRow.runtimeOnly
               }
             >
               {selectedRow.disabled ? t('accounts.enable') : t('accounts.disable')}

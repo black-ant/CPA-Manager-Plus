@@ -3185,7 +3185,7 @@ describe('AccountsPage replacement flows', () => {
     expect(mocks.configurationReset).not.toHaveBeenCalled();
   });
 
-  it('guards deletion of the open credential without discarding the draft before deletion', async () => {
+  it('deletes the open credential with a single confirmation and discards the draft afterwards', async () => {
     mocks.configurationDirty = true;
     mocks.location = {
       pathname: '/accounts',
@@ -3199,20 +3199,17 @@ describe('AccountsPage replacement flows', () => {
       await Promise.resolve();
     });
 
-    expect(mocks.showConfirmation).toHaveBeenCalledTimes(1);
-    expect(mocks.handleDelete).not.toHaveBeenCalled();
-    const confirmation = mocks.showConfirmation.mock.calls[0]?.[0] as {
-      onConfirm: () => void;
-    };
-
-    await act(async () => {
-      confirmation.onConfirm();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(mocks.handleDelete).toHaveBeenCalledWith(mocks.files[0]);
+    expect(mocks.showConfirmation).not.toHaveBeenCalled();
+    expect(mocks.handleDelete).toHaveBeenCalledTimes(1);
+    const deleteOptions = mocks.handleDelete.mock.calls[0]?.[1] as
+      | { onConfirmed?: () => void }
+      | undefined;
+    expect(deleteOptions?.onConfirmed).toBeTypeOf('function');
     expect(mocks.configurationReset).not.toHaveBeenCalled();
+
+    deleteOptions?.onConfirmed?.();
+
+    expect(mocks.configurationReset).toHaveBeenCalledTimes(1);
   });
 
   it('does not let router navigation discard a configuration while it is saving', async () => {
@@ -5025,7 +5022,8 @@ describe('AccountsPage replacement flows', () => {
       });
 
       expect(mocks.loadFiles).not.toHaveBeenCalled();
-      expect(mocks.deselectAll).toHaveBeenCalledTimes(1);
+      // 单行开关不再清空多选，用户可以选择多行继续操作
+      expect(mocks.deselectAll).not.toHaveBeenCalled();
       expect(statusToggle().props.disabled).toBe(false);
     }
   );
@@ -10377,7 +10375,7 @@ describe('AccountsPage replacement flows', () => {
         'auth_files.delete_button'
       ).props.onClick();
     });
-    expect(mocks.handleDelete).toHaveBeenCalledWith(mocks.files[0]);
+    expect(mocks.handleDelete).toHaveBeenCalledWith(mocks.files[0], undefined);
 
     await act(async () => {
       const statusToggle = findAccountCardInputByAriaLabel(

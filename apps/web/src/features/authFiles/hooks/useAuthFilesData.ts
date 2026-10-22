@@ -103,7 +103,7 @@ export type UseAuthFilesDataResult = {
     fileName: string,
     jsonText: string
   ) => Promise<string[]>;
-  handleDelete: (item: AuthFileItem) => void;
+  handleDelete: (item: AuthFileItem, options?: { onConfirmed?: () => void }) => void;
   handleDownload: (name: string) => Promise<void>;
   handleCredentialRefresh: (item: AuthFileItem) => Promise<void>;
   toggleSelect: (key: string) => void;
@@ -783,7 +783,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
   const deleteOperationRef = useRef<symbol | null>(null);
   const loadFilesRequestRef = useRef(0);
   const filesRevisionRef = useRef(0);
-  const batchStatusPendingRef = useRef<number | null>(null);
+  const batchStatusOperationCountRef = useRef(0);
   const statusMutationPendingRef = useRef<Map<string, number>>(new Map());
   const batchFieldsPendingRef = useRef<number | null>(null);
   const credentialRefreshPendingRef = useRef<Map<string, number>>(new Map());
@@ -798,7 +798,6 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
     connectionFingerprintRef.current = connectionFingerprint;
     authFilesOperationGenerationRef.current += 1;
     loadFilesRequestRef.current += 1;
-    batchStatusPendingRef.current = null;
     statusMutationPendingRef.current.clear();
     batchFieldsPendingRef.current = null;
     uploadOperationRef.current = null;
@@ -1239,7 +1238,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
   );
 
   const handleDelete = useCallback(
-    (item: AuthFileItem) => {
+    (item: AuthFileItem, options?: { onConfirmed?: () => void }) => {
       const confirmationConnectionFingerprint = connectionFingerprint;
       const confirmationRequestScope = requestScope;
       const confirmationGeneration = authFilesOperationGenerationRef.current;
@@ -1269,6 +1268,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
             connectionFingerprintRef.current !== confirmationConnectionFingerprint
           )
             return;
+          options?.onConfirmed?.();
           const operationGeneration = authFilesOperationGenerationRef.current;
           const operationToken = Symbol('auth-file-delete');
           deleteOperationRef.current = operationToken;
@@ -1496,7 +1496,6 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
     async (targets: AuthFilePatchTarget[], enabled: boolean) => {
       const generation = authFilesOperationGenerationRef.current;
       const filesRevision = filesRevisionRef.current;
-      if (batchStatusPendingRef.current !== null) return;
 
       const normalizedTargets = normalizeBatchPatchTargets(targets, getPatchTargetIdentityKey);
       if (normalizedTargets.length === 0) return;
@@ -1513,8 +1512,8 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
       ) {
         return;
       }
-      batchStatusPendingRef.current = generation;
       lockedKeys.forEach((key) => statusMutationPendingRef.current.set(key, generation));
+      batchStatusOperationCountRef.current += 1;
       setBatchStatusUpdating(true);
 
       try {
@@ -1533,7 +1532,24 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
             }
           : undefined;
         let currentFiles: AuthFileItem[];
-        if (readFreshMutationSnapshot) {
+        // Prefer the in-memory inventory: it is the snapshot the UI just acted on and
+        // saves a read round-trip before the mutation. Plugin-source targets keep the
+        // fresh lookup because runtime/name collisions cannot be ruled out from a
+        // possibly stale row.
+        const memorySnapshot = singleTarget
+          ? resolveAuthFileStatusMutationTarget(files, singleTarget)
+          : null;
+        const memoryTarget = memorySnapshot?.target ?? null;
+        const memoryRuntimeId = memoryTarget ? readAuthFileStatusRuntimeId(memoryTarget) : '';
+        const memoryPhysicalName = memoryTarget ? readAuthFileStatusPhysicalName(memoryTarget) : '';
+        const memoryTargetUsesPluginSource =
+          Boolean(memoryRuntimeId) && memoryRuntimeId !== memoryPhysicalName;
+        const usesMemorySnapshot = Boolean(
+          memoryTarget && memorySnapshot?.failure === null && !memoryTargetUsesPluginSource
+        );
+        if (usesMemorySnapshot) {
+          currentFiles = files;
+        } else if (readFreshMutationSnapshot) {
           currentFiles = await readFreshMutationSnapshot();
         } else {
           const response = requestScope
@@ -1542,7 +1558,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
           currentFiles = Array.isArray(response.files) ? response.files : [];
         }
         if (authFilesOperationGenerationRef.current !== generation) return;
-        if (filesRevisionRef.current === filesRevision) {
+        if (!usesMemorySnapshot && filesRevisionRef.current === filesRevision) {
           commitFiles((previousFiles) =>
             singleTarget
               ? replaceAuthFileSourceSnapshot(previousFiles, singleTarget.name, currentFiles)
@@ -1783,48 +1799,52 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions = {}): UseAuth
           );
         }
 
-        // CPA may apply a mutation even when the client loses its response.
+        // CPA may apply a mutation even when the client loses its response. Read back
+        // in the background so the confirmation can release the UI immediately.
         if (singleTarget && results.length > 0) {
-          try {
-            // Keep status locks through read-back. Other refreshes can still
-            // replace files, so discard stale reads and retry at most once.
-            for (let attempt = 0; attempt < 2; attempt += 1) {
-              const revision = filesRevisionRef.current;
-              const sourceFiles = await lookupFiles({ name: singleTarget.name });
-              if (authFilesOperationGenerationRef.current !== generation) return;
-              if (filesRevisionRef.current === revision) {
-                commitFiles((previousFiles) =>
-                  replaceAuthFileSourceSnapshot(previousFiles, singleTarget.name, sourceFiles)
-                );
-                break;
+          void (async () => {
+            try {
+              // Other refreshes can still replace files, so discard stale reads and
+              // retry at most once.
+              for (let attempt = 0; attempt < 2; attempt += 1) {
+                const revision = filesRevisionRef.current;
+                const sourceFiles = await lookupFiles({ name: singleTarget.name });
+                if (authFilesOperationGenerationRef.current !== generation) return;
+                if (filesRevisionRef.current === revision) {
+                  commitFiles((previousFiles) =>
+                    replaceAuthFileSourceSnapshot(previousFiles, singleTarget.name, sourceFiles)
+                  );
+                  break;
+                }
+                if (attempt === 1) showNotification(t('notification.refresh_failed'), 'warning');
               }
-              if (attempt === 1) showNotification(t('notification.refresh_failed'), 'warning');
+            } catch (err: unknown) {
+              if (authFilesOperationGenerationRef.current !== generation) return;
+              const errorMessage =
+                err instanceof Error ? err.message : t('notification.refresh_failed');
+              showNotification(`${t('notification.refresh_failed')}: ${errorMessage}`, 'warning');
             }
-          } catch (err: unknown) {
-            if (authFilesOperationGenerationRef.current !== generation) return;
-            const errorMessage =
-              err instanceof Error ? err.message : t('notification.refresh_failed');
-            showNotification(`${t('notification.refresh_failed')}: ${errorMessage}`, 'warning');
-          }
+          })();
         }
 
-        deselectAll();
+        if (normalizedTargets.length > 1) deselectAll();
       } catch (err: unknown) {
         if (authFilesOperationGenerationRef.current !== generation) return;
         const errorMessage = err instanceof Error ? err.message : '';
         showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
       } finally {
-        if (batchStatusPendingRef.current === generation) {
-          batchStatusPendingRef.current = null;
-        }
         lockedKeys.forEach((key) => {
           if (statusMutationPendingRef.current.get(key) === generation) {
             statusMutationPendingRef.current.delete(key);
           }
         });
-        if (authFilesOperationGenerationRef.current === generation) {
-          setBatchStatusUpdating(false);
-        }
+        // Count down even when the connection changed: the superseded operation still
+        // holds a slot, so skipping it here would leave the pending flag stuck on.
+        batchStatusOperationCountRef.current = Math.max(
+          0,
+          batchStatusOperationCountRef.current - 1
+        );
+        if (batchStatusOperationCountRef.current === 0) setBatchStatusUpdating(false);
       }
     },
     [

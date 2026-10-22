@@ -1450,6 +1450,27 @@ describe('useAuthFilesData handleDelete', () => {
     hook.unmount();
   });
 
+  it('runs onConfirmed only after the delete confirmation is accepted', async () => {
+    mocks.deleteFileByName.mockResolvedValueOnce({
+      deleted: 1,
+      files: ['owned.json'],
+      failed: [],
+    });
+    const onConfirmed = vi.fn();
+    const hook = mountUseAuthFilesData('scope-a');
+
+    act(() => hook.getCurrent().handleDelete(disabledFile, { onConfirmed }));
+    const confirmation = mocks.showConfirmation.mock.calls[0]?.[0] as
+      | { onConfirm?: () => Promise<void> }
+      | undefined;
+    expect(onConfirmed).not.toHaveBeenCalled();
+
+    await act(async () => confirmation?.onConfirm?.());
+
+    expect(onConfirmed).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
+
   it('clears ownership only for the active connection after a successful delete', async () => {
     vi.stubGlobal('localStorage', createStorage());
     for (const scope of ['scope-a', 'scope-b']) {
@@ -3859,7 +3880,7 @@ describe('useAuthFilesData scoped status snapshots', () => {
     hook.unmount();
   });
 
-  it('holds the original pending lock until scoped read-back completes', async () => {
+  it('releases the pending lock while the scoped read-back finishes in the background', async () => {
     const readBack = createDeferred<AuthFileItem[]>();
     mocks.list.mockResolvedValue({ files: [targetFile] });
     mockAuthFileLookup([targetFile]);
@@ -3875,15 +3896,9 @@ describe('useAuthFilesData scoped status snapshots', () => {
     });
     expect(mocks.lookup).toHaveBeenCalledTimes(3);
     expect(hook.getCurrent().files[0].disabled).toBe(true);
-    expect(hook.getCurrent().batchStatusUpdating).toBe(true);
+    // The confirmed result is already interactive: the read-back no longer holds the lock.
+    expect(hook.getCurrent().batchStatusUpdating).toBe(false);
 
-    await act(async () => {
-      await hook.getCurrent().batchSetStatus([getAuthFilePatchTarget(targetFile)], true);
-    });
-
-    expect(mocks.setStatus).toHaveBeenCalledTimes(1);
-    expect(mocks.lookup).toHaveBeenCalledTimes(3);
-    expect(hook.getCurrent().batchStatusUpdating).toBe(true);
     await act(async () => {
       readBack.resolve([{ ...targetFile, disabled: true, note: 'read-back' }]);
       await mutation;
